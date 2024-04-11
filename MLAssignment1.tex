@@ -1,0 +1,220 @@
+\documentclass{article}
+\usepackage[utf8x]{inputenc}
+\usepackage[margin=0.7in]{geometry}
+\usepackage[colorlinks=true, linkcolor=black, citecolor=red]{hyperref}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage{amsmath, amssymb, bm}
+
+\usepackage{array}
+\usepackage[ruled,vlined,noline]{algorithm2e}
+\usepackage{epsfig}
+\usepackage{hyperref} 
+\usepackage{cleveref}
+\usepackage{cite}
+\usepackage{glossaries}
+\usepackage{natbib}
+\usepackage{makecell}
+\usepackage{tikz}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{xcolor}
+
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\renewcommand\arraystretch{1.8}% (MyValue=1.0 is for standard spacing)
+\DeclareOldFontCommand{\rm}{\normalfont\rmfamily}{\mathrm}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\deadline}{\noindent\textbf{Deadline:}\xspace}
+\newcommand{\submission}{\noindent\textbf{Submission:}\xspace}
+\newcommand{\implementation}{\noindent\textbf{Implementation:}\xspace}
+\newcommand{\bonus}[1]{\section*{Bonus: \textnormal{(#1 points)}}}
+\newcommand{\note}{\paragraph*{Note:}}
+\newcommand{\eg}{\emph{e.g.}\xspace}
+\newcommand{\ie}{\emph{i.e.}\xspace}
+\newcommand{\wrt}{\emph{w.r.t.}\xspace}
+\newcommand{\psnr}{\ensuremath{\text{PSNR}}\xspace}
+\newcommand{\mse}{\ensuremath{\text{MSE}}\xspace}
+\newcommand{\task}[2]{\section{#1\hspace{0.3cm}\textnormal{(#2 points)}}}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\sig}{\boldsymbol{\Sigma}}
+\newcommand{\m}{\boldsymbol{\mu}}
+\renewcommand{\vec}[1]{\textbf{#1}}
+
+
+\title{{\Huge \textbf{Assignment 1}} \\ {\Large \textbf{Machine Learning 2}}}
+\author{Lea Bogensperger, \texttt{lea.bogensperger@icg.tugraz.at}\vspace{-0.4cm} \\ Benedikt Kantz, \texttt{benedikt.kantz@student.tugraz.at}}
+
+\date{April 9, 2024}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+
+\renewcommand{\vec}[1]{\textbf{#1}}
+\newcommand{\mat}[1]{\textbf{#1}}
+
+\newacronym{em}{EM}{Expectation-Maximization}
+\newacronym{pdf}{pdf}{probability density function}
+\newacronym{gmm}{GMM}{gaussian mixture model}
+
+\begin{document}
+\maketitle
+
+\vspace{0.5cm}
+\deadline
+April 30, 2024 at 23:55h.
+
+\submission 
+Upload your report (\texttt{report.pdf}), your implementation (\texttt{main.py}) and your figure file (\texttt{figures.pdf}) to the TeachCenter. Please do not zip your files. Use the provided file containing the code framework for your implementation.
+
+\section{Transformation of Probability Distributions (4P)}
+Assume we are given a \gls{pdf} $p_X(x)$. Now for a given non-linear change of variables $z=f(x)$ we can compute the resulting \gls{pdf} $p_Z(z)$ using
+\[
+p_Z(z) = \sum_{x,f(x)=z} \frac{p_X(x)}{|f'(x)|},
+\]
+where the summation explicitely includes \textit{all} $x$ for which $f(x)=z$. 
+Assume we are given a \gls{pdf} $p_X(x)=\frac{\exp(-\frac 12 x^2)}{\sqrt{2\pi}}$ and a transformation $f(x)=x^2$.
+\paragraph{Tasks}
+\begin{enumerate}
+	%\setcounter{enumi}{2}
+	\item Compute $p_Z(z)$ for the transformed random variable $Z$. Show all steps in your report.
+	\item State the two properties that a valid \gls{pdf} must satisfy (see Lecture slides) and verify whether this holds for your transformed \gls{pdf} $p_Z(z)$. Document your steps of verifying the \gls{pdf} in your report. 
+\end{enumerate}
+
+\paragraph{Implementation details}
+\begin{itemize}
+	\item Since the transformed \gls{pdf} does not admit a closed-form solution for the indefinite integral, you can use  \texttt{scipy.integrate.quad} here to numerically approximate an integral.
+\end{itemize}
+Implement this task in \texttt{task1} of \texttt{main.py}.
+
+\section{Gaussian Mixture Model (GMM) (15P)}
+Next, the task is to fit a multivariate \gls{gmm} to the FashionMNIST data set~\cite{xiao2017fashionmnist} such that it can be sampled from or used in a different inverse problem such as denoising or inpainting. The official training data set consists of $\boldsymbol{\mathsf{x}} = \{\vec x^1, \dots, \vec x^S \}$ with $S$ training images (see Figure~\ref{fig:mnist} for examples of a sampled subset) and each vectorized image is of size $\vec x^s \in \R^{D}$, with $D=M\cdot M$ and $M=28$. 
+
+\begin{figure}[H]
+\begin{center}
+\includegraphics[width=\textwidth]{figures/fashionmnist} \caption{Exemplary training images from a subset of the FashionMNIST data set where $S=2000$ random images exclusively from the labels $0,1,8$ were sampled.} \label{fig:mnist}
+\end{center}
+\end{figure}
+
+In this setting where we are interested in density estimation, we can use a \gls{gmm} with $K$ components to represent our data. As we are dealing with training samples each of size $\vec x ^s \in \R^{M\cdot M}$, we require a multivariate \gls{gmm} to model our prior/data distribution
+\begin{equation}
+p(\vec x) = \prod_{s=1}^S \sum_{k=1}^K \pi_k \mathcal{N}(\vec x^s|\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k), 
+\end{equation}
+where each individual multivariate Gaussian is naturally given by
+\[
+\mathcal{N}(\vec x^s|\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k) = \frac{1}{(2\pi)^{D/2} |\boldsymbol{\Sigma}_k|^{1/2} } \exp\big (-\tfrac 1 2 (\vec x^s - \boldsymbol{\mu}_k)^T \boldsymbol{\Sigma}_k^{-1} (\vec x^s - \boldsymbol{\mu}_k)\big).
+\]
+The parameters of the \gls{gmm} can be fitted using an \gls{em} algorithm to minimize the negative log-likelihood, given in Algorithm~\ref{alg:em}.
+
+\begin{algorithm}[htb]
+Set stopping threshold $\epsilon_1$, maximum number of iterations $J$, set iteration counter $j=1$ \\
+Initialize $\m_k^0,\sig_k^0,\pi_k^0$ for $k=1,\dots,K$ \\
+\While{$|-\log p(\vec x|\m^j,\sig^{j},\pi^j) + \log p(\vec x|\m^{j-1},\sig^{{j-1}},\pi^{j-1})| \geq \epsilon_1$ }{
+$( w_k^s)^j = \frac{\pi_k^{j-1} \mathcal{N}(\vec x^s|\m_k^{j-1},\sig_k^{{j-1})}}{\sum_{k=1}^K \pi_k^{j-1} \mathcal{N}(\vec x^s|\m_k^{j-1},\sig_k^{{j-1}})}$ \\ 
+
+$N_k^j = \sum_{s=1}^{S} ( w_k^s)^j$\\
+
+$ \m_k^j = \frac{\sum_{s=1}^{S} (w_k^s)^j \vec x^s}{N_k^j}$ \\
+
+$\sig_k^{j} = \frac{1}{ N_k^j} \sum_{s=1}^{S} ( w_k^s)^j (\vec x^s - \m_k) (\vec x^s - \m_k)^T$ \\%
+
+$\pi_k^j = \frac{N_k^j}{S} $ \\ 
+
+$j = j + 1$\\
+}
+Output: fitted parameters $\{\m, \sig, \pi \}$=$\{\m^j, \sig^{j}, \pi^j\}$\\
+\caption{\gls{em} algorithm.}\label{alg:em}
+\end{algorithm}
+
+\Glspl{gmm} are very sensitive to initialization, therefore using the k-means algorithm is a very popular strategy, which is described in Algorithm~\ref{alg:kmeans}. 
+\begin{algorithm}[htb]
+Set stopping threshold $\epsilon_2$, maximum number of iterations $J$, set iteration counter $j=1$ \\
+Randomly pick $K$ k-means centroids $\m_k$ from your data set. \\
+\While{\text{stopping criterion not fulfilled}}{
+$D_k^j = \{\vec x^s: \Vert \vec x^s - \m_k^j \Vert_2^2 \leq \Vert \vec x^s - \m_i^j \Vert_2^2 \quad \forall i, \ 1\leq i \leq K \}$ \\ 
+$\m_k^{j+1} = \frac{1}{|D_k^j|} \sum_{\vec x^t \in D_k^j} \vec x^t $\\
+$j = j + 1$ \\
+}
+Output: $K$ centroids $\m$=$\m^j$\\
+\caption{k-means algorithm.}\label{alg:kmeans}
+\end{algorithm}
+
+
+\paragraph{Tasks}
+\begin{enumerate}
+	\item State the dimensions of all \gls{gmm} parameters depending on $K$ components and the dimensionality $M$. 
+	\item The loading of the $S=2000$ training images is already provided for you, see Figure~\ref{fig:mnist} for exemplary images. Note that for simplicity, we only use images containing the labels $0,1,8$ -- corresponding to T-Shirt/Top (0), Trousers (1) and Bag (8). Choose a reasonable number of \gls{gmm} components.
+	Initialize your weights using a uniform distribution, and use the identity matrix to initialize the covariance matrices.
+	\item The means initialization is crucial, as the \gls{gmm} can easily get trapped in local optima. Therefore, we use a k-means algorithm for the initialization of the means $\m_k$. Implement this in your code as given in Algorithm~\ref{alg:kmeans}, where you decide on a reasonable stopping criterion to evaluate the performance of the k-means algorithm and explain this in the report. Note that the k-means algorithm always iterates between the two steps:
+	\begin{enumerate}
+	\item \textbf{assignment step}: assign each data sample $\vec x^s$ to a cluster $k$ with mean $\m_k$, such that you have sets $\vec D_k = \{ D_{k,1}, \dots, D_{k,L} \}$ with $L$ samples per cluster (they can be different among each cluster),
+	\item \textbf{update step}: re-compute the means for the newly assigned cluster samples.
+	\end{enumerate}
+	\item Fit your \gls{gmm} parameters by implementing Algorithm~\ref{alg:em}. Take a close look at the implementation details for tipps on efficient and numerically stable implementations. As in the previous assignment, report what kind of stopping criterion you used. 
+	\item Plot the means and the covariances of all fitted \gls{gmm} components (reshape them appropriately!) and include the respective weights $\pi_k$ in the title of each subplot. Discuss the results. 
+	\item Since we have a generative model that estimates the density of the underlying data, we can actually sample from it. For our \gls{gmm} this is done by drawing a mixture component $k$ with probabilities $\pi$ and then sample from this component with the fitted parameters $\m_k$ and $\sig_k$. Generate and plot $10$ samples, denote the sampled components in each subtitle.
+\end{enumerate}
+
+\paragraph{Implementation details}
+\begin{itemize}
+\item For numerical stability when computing the responsibilities, use the log-sum-exp trick to do your computations in the log-domain (note that $\vec y_k$ is an arbitrary variable here where we sum over dimension $k$, it is your task to properly adapt this to the setting):
+\[
+\log \sum_{k=1}^K \exp(\vec y_k)  = \max_k(\vec y_k) + \log \sum_{k=1}^K \exp(\vec y_k - \max_k(\vec y_k)).
+\]
+\item When inverting your covariance matrix $\sig_k$, add a small offset of $1e-6$ to the main diagonal for stability. 
+\item When you compute $|\boldsymbol{\Sigma}_k|^{1/2} $, it can be advantageous to use a Cholesky decomposition\footnote{You can do this using \texttt{numpy.linalg.cholesky}.} to represent your matrix using a lower-triangular matrix $\vec L$ -- you might also need the trick of adding a small offset to the main diagonal of the covariance matrix first. Make use of the property $|\vec A \vec B| = |\vec A||\vec B|$ when handling matrix determinants. 
+\item For sampling, also use the Cholesky decomposition to sample from the selected mixture component $k$. 
+\item Note that when plotting means $\m_k$ it is common to use a \texttt{gray} colormap, whereas for the covariances $\sig_k$ the convention is to use \texttt{viridis} (default). 
+\end{itemize}
+
+\section{Conditional GMM: Inpainting (6P)}
+A \gls{gmm} with fitted parameters can not only be used for sampling, but also for other tasks such as image inpainting (see Figure~\ref{fig:condGMM}), which can even be computed in closed form. This is based on the principle of conditioning a multivariate Gaussian on a random variable, which can also be extended to a mixture of Gaussians. 
+\begin{figure}[H]
+\begin{center}
+\includegraphics[width=.6\textwidth]{figures/condGMM} \caption{Conditional \gls{gmm} used for image inpainting using 10\% of the original pixel values, where a given corrupted conditioning image can be used to compute the posterior expectation of the conditional \gls{gmm}.} \label{fig:condGMM}
+\end{center}
+\end{figure}
+
+Let us denote the pixels to condition on as $\vec x_2$, and the part of the image that has to be restored as $\vec x_1$. Equivalently, the mean and covariance matrix of a single Gaussian can be partitioned using 
+\begin{equation*}
+\m = (\m_{1},\m_2)^T, \qquad 
+\sig=\begin{pmatrix}
+\sig_{11} & \sig_{12} \\ \sig_{21} & \sig_{22} 
+\end{pmatrix},
+\end{equation*}
+respectively. Thus, the conditional mean and covariance for the individual Gaussian can be computed as follows:
+\begin{align*}
+\m_{1|2} &= \m_1 + \sig_{12}  \sig_{22}^{-1} (\vec x_2 - \m_2) \\
+\sig_{1|2} & = \sig_{11} - \sig_{12} \sig_{22}^{-1} \sig_{21}.
+\end{align*}
+You task will be to expand the conditioning to a \gls{gmm} and to apply this on a given subset of the FashionMNIST test set. 
+
+\paragraph{Tasks}
+\begin{enumerate}
+\item The loading of $10$ test images $\vec x$ is already provided in the code. Generate a corruption mask $\vec m$ such that it masks random 90\% of the pixels when it is applied element-wise for $i=1,\dots,M^2$ to each image $\vec x$ by
+\begin{equation*}
+x_i = \begin{cases} x_i &\text{ if }  m_i = 1, \\
+0, &\text{ if } m_i = 0.
+\end{cases}
+\end{equation*}
+Vectorize your images and apply the corruption mask accordingly to mask out a fraction of the images.
+\item Show how to analytically compute the posterior of the conditional \gls{gmm}.  
+Use the product rule as a starting point and document all steps in your report. Show how this is again a proper \gls{gmm} by introducing $\pi_{k,1|2}$. 
+\item Show that the expectation of the posterior is given by
+\[
+\mathbb{E}[\vec x_1|\vec x_2] = \sum_{k=1}^K \pi_{k,1|2}~ \m_{k,1|2}.
+\] 
+\item Implement the conditional \gls{gmm} and compute the posterior computation and merge your result with the conditioned image $\vec x_2$. 
+\item For all $10$ corrupted test samples, plot the corrupted image together with the restored (posterior expectation) and the ground truth images. 
+\end{enumerate}
+
+\paragraph{Implementation details}
+\begin{itemize}
+\item For computing the conditional means and covariances, make sure you properly index the respective entries of your original means and covariances by using the corruption mask indices. Check all resulting dimensions carefully. 
+\end{itemize}
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
