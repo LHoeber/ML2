@@ -18,7 +18,7 @@ def tol_inverse(A):
     return np.linalg.pinv(A+np.eye(A.shape[0])*(1e-6))# added small tolerance to avoid non-invertible matrices
 
 def cholesky_det(A):
-    lower = np.linalg.cholesky(A+np.eye(A.shape[0])*(1e-6))
+    lower = np.linalg.cholesky(A+np.eye(A.shape[0])*(1e-4))
     upper = lower.T.conj()
     return np.linalg.det(lower)*np.linalg.det(upper)
 
@@ -91,18 +91,15 @@ def task2(x, K):
     #3.) Initialization of means with k-means algorithm
     print("Initialization of mu with k-means algorithm ...")
     epsilon = 0.9
-    J = 20
+    J = 10
     j = 1
     distances = np.ones(S)*np.inf
     #pick 3 random samples as starting points for the centroids
     center_assignments = np.zeros(S)
     center_assignments_new = np.zeros(S)
-    centers = [np.zeros((D)) for k in range(K)]
+    centers = [x[np.random.randint(0,S),:] for k in range(K)]
 
-    for k in range(K):
-        centers[k] = x[np.random.randint(0,S),:]
-
-        #stopping criteria 1: max. iterations reached
+    #stopping criteria 1: max. iterations reached
     while j<=J:
         print(f"Iteration {j}")
         for s in range(S): # iterate over images
@@ -147,20 +144,17 @@ def task2(x, K):
         #applying the log sum exp trick to get responsabilities
         #denum = np.sum([pi[k]*single_gauss(x[s,:],mu[k],sigma[k]) for k in range(K)])
         
+        inv_sig = [tol_inverse(sigma[k]) for k in range(K)]
+        det_sig = [cholesky_det(sigma[k]) for k in range(K)]
         for k in range(K):
             w_ks_list = []
-            inv_sig = [tol_inverse(sigma[k]) for k in range(K)]
-            det_sig = [cholesky_det(sigma[k]) for k in range(K)]
-            # print(inv_sig)
-            # print(det_sig)
-            # print(exponents)
 
             for s in range(S):
-                exponents = [-1/2*((x[s,:]-mu[k]).T @ inv_sig[k] @ (x[s,:]-mu[k])) for k in range(K)]
+                exponents = [-1/2*((x[s,:]-mu[k]).T @ (inv_sig[k] @ (x[s,:]-mu[k]))) for k in range(K)]
                 y_max = np.max(exponents)
                 # -> log sum trick: adding the first maximum in front
                 log_w_ks_enum = np.log(pi[k])-1/2*np.log(det_sig[k]) +exponents[k]
-                log_w_ks_denum = y_max + np.log(np.sum([pi[k]/det_sig[k]*np.exp(exponents[k]-y_max) for k in range(K)]))
+                log_w_ks_denum = y_max + np.log(np.sum([pi[k]/np.sqrt(det_sig[k])*np.exp(exponents[k]-y_max) for k in range(K)]))
                
                 w_ks = np.exp(log_w_ks_enum-log_w_ks_denum)
                 w_ks_list.append(w_ks)
@@ -173,7 +167,7 @@ def task2(x, K):
             print(f"N_{k} finished")
             mu_new[k] = np.sum(w_ks_list @ x)/N_k
             print(f"mu_{k} finished with dim: {mu_new[k].shape}")
-            sigma_new[k] = 1/N_k * np.sum([w_ks_list[s]*((x[s,:]-mu[k]).T @ (x[s,:]-mu[k])) for s in range(S)])
+            sigma_new[k] = 1/N_k * np.sum([w_ks_list[s]*((x[s,:]-mu[k]) @ (x[s,:]-mu[k]).T) for s in range(S)])
             print(f"sigma_{k} finished")
             pi_new[k] = N_k/S
             print(f"pi_{k} finished")
