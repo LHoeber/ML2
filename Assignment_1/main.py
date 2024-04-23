@@ -36,6 +36,38 @@ def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
     cost = np.abs(log_p_1-log_p_2)
     
     return cost
+
+
+def plot_GMM(mu, sigma, pi):
+    K = len(mu)
+
+    # Create subplots
+    fig, axs = plt.subplots(K, 2, figsize=(10, 6))
+
+    # Plot each GMM component
+    for k, (mean, cov, weight) in enumerate(zip(mu, sigma, pi)):
+        # Plot the mean
+        # Plot the covariance matrix
+        M = int(np.sqrt(len(mean)))
+        mean_reshaped = mean.reshape(M,M)
+        im = axs[k,0].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
+        # Add a colorbar for covariance matrix
+        fig.colorbar(im, ax=axs[k,0])
+        axs[k,0].set_title(f'Mean, k =  {k+1} (Weight: {weight:.2f})')
+
+        # Plot the covariance matrix
+        im = axs[k,1].imshow(cov, cmap='viridis', interpolation='nearest')
+        # Add a colorbar for covariance matrix
+        fig.colorbar(im, ax=axs[k,1])
+
+        # Set title with weight of the component
+        axs[k,1].set_title(f'Covariance matrix, k =  {k+1} (Weight: {weight:.2f})')
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Show plot
+    plt.show()  
 ########################################## Helper functions ##########################################
 
 def task1():
@@ -90,8 +122,8 @@ def task2(x, K):
 
     #3.) Initialization of means with k-means algorithm
     print("Initialization of mu with k-means algorithm ...")
-    epsilon = 0.9
-    J = 10
+    epsilon = 0.5
+    J = 20
     j = 1
     distances = np.ones(S)*np.inf
     #pick 3 random samples as starting points for the centroids
@@ -129,12 +161,13 @@ def task2(x, K):
 
     #4.) EM algorithm
     print("Expectaction Maximization algorithm ...")
-    e_1 = 10
+    e_1 = 0.5
     mu_new = np.copy(mu)
     sigma_new = np.copy(sigma)
     pi_new = np.copy(pi)
 
-    J = 20
+
+    J = 2
     j = 1
 
     #first iteration is always executed to get the first updated values for the cost function
@@ -165,15 +198,25 @@ def task2(x, K):
 
             N_k = np.sum(w_ks_list)
             print(f"N_{k} finished")
-            mu_new[k] = np.sum(w_ks_list @ x)/N_k
+            mu_new[k] = (w_ks_list @ x)/N_k
             print(f"mu_{k} finished with dim: {mu_new[k].shape}")
-            sigma_new[k] = 1/N_k * np.sum([w_ks_list[s]*((x[s,:]-mu[k]) @ (x[s,:]-mu[k]).T) for s in range(S)])
+            ######
+            
+            sigma_new[k] = np.eye(D)
+            for s in range(S):
+                sigma_new[k] = sigma_new[k]+np.outer((x[s,:]-mu[k]),(x[s,:]-mu[k]))*w_ks_list[s]
+            ######
+            sigma_new[k] = 1/N_k * sigma_new[k]
             print(f"sigma_{k} finished")
             pi_new[k] = N_k/S
             print(f"pi_{k} finished")
 
-        cost = cost_function(x,mu_new, sigma_new, pi_new,mu,sigma, pi)
-        
+
+        #cost = cost_function(x,mu_new, sigma_new, pi_new,mu,sigma, pi)
+        cost = 1
+
+        plot_GMM(mu_new, sigma_new, pi_new)
+
         if (cost >= e_1):
             print(f"Remaining cost: {cost} higher than {epsilon}")
             mu = np.copy(mu_new)
@@ -190,8 +233,8 @@ def task2(x, K):
             break
     print("Done")
 
-            
-
+    #Plotting the GMM components
+    
         
 
     """ End of your code
