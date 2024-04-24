@@ -15,12 +15,14 @@ from scipy.integrate import quad
 
 ########################################## Helper functions ##########################################
 def tol_inverse(A):
-    return np.linalg.pinv(A+np.eye(A.shape[0])*(1e-6))# added small tolerance to avoid non-invertible matrices
+    A = A + np.eye(A.shape[0])*(1e-6)
+    return np.linalg.inv(A)# added small tolerance to avoid non-invertible matrices
 
 def cholesky_det(A):
-    lower = np.linalg.cholesky(A+np.eye(A.shape[0])*(1e-4))
-    upper = lower.T.conj()
-    return np.linalg.det(lower)*np.linalg.det(upper)
+    A = A + np.eye(A.shape[0])*(1e-6)
+    lower = np.linalg.cholesky(A)
+    det_L = np.linalg.det(lower)
+    return det_L**2
 
 def single_gauss(x_s, mu, sigma):
     #take the pseudo-inverse only in case the matrix is not invertible
@@ -47,24 +49,22 @@ def plot_GMM(mu, sigma, pi,ax):
         # Plot the covariance matrix
         M = int(np.sqrt(len(mean)))
         mean_reshaped = mean.reshape(M,M)
-        im = ax[0,k].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
+        ax[0,k].imshow(mean_reshaped, cmap='gray', interpolation='nearest')
         # Add a colorbar for covariance matrix
         #plt.gcf().colorbar(im, ax=ax[0,k])
         ax[0,k].set_title(f'Mean')
 
         # Plot the covariance matrix
-        im = ax[1,k].imshow(cov, cmap='viridis', interpolation='nearest')
+        ax[1,k].imshow(cov, cmap='viridis', interpolation='nearest')
         # Add a colorbar for covariance matrix
         #plt.gcf().colorbar(im, ax=ax[1,k])
 
         # Set title with weight of the component
         ax[1,k].set_title(f'Covariance matrix')
-
-    # Adjust layout
+    
     plt.tight_layout()
 
-    # Show plot
-    plt.show()  
+    return ax 
 
 def plot_samples(mu, sigma, pi, ax, num):
     
@@ -86,20 +86,21 @@ def plot_samples(mu, sigma, pi, ax, num):
             sample_norm = np.random.randn(mu.shape[1])
             
             # Cholesky decomposition of the covariance matrix
-            lower = np.linalg.cholesky(sigma[k,:,:])
+            lower = np.linalg.cholesky(sigma[k,:,:]+ np.eye(sigma.shape[1])*(1e-6))
             
             # Transform standard normal variables to sample from the multivariate normal distribution
             sample = mu[k,:] + np.dot(lower, sample_norm)
             #########
             M = int(np.sqrt(len(sample)))
             mean_reshaped = sample.reshape(M,M)
-            im = ax[j,i].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
+            im = ax[j,i].imshow(mean_reshaped, cmap='gray', interpolation='nearest')
             # Add a colorbar for covariance matrix
             #plt.gcf().colorbar(im, ax=ax[0,k])
             ax[j,i].set_title(f'k = {k}')
 
+    plt.tight_layout()
 
-    return sample
+    return ax
 ########################################## Helper functions ##########################################
 
 def task1():
@@ -211,6 +212,7 @@ def task2(x, K):
         
         inv_sig = [tol_inverse(sigma[k]) for k in range(K)]
         det_sig = [cholesky_det(sigma[k]) for k in range(K)]
+
         for k in range(K):
             w_ks_list = []
 
@@ -234,12 +236,7 @@ def task2(x, K):
             mu_new[k] = (w_ks_list @ x)/N_k
             print(f"mu_{k} finished with dim: {mu_new[k].shape}")
             ######
-            
-            sigma_new[k] = np.eye(D)
-            for s in range(S):
-                sigma_new[k] = sigma_new[k]+np.outer((x[s,:]-mu[k]),(x[s,:]-mu[k]))*w_ks_list[s]
-            ######
-            sigma_new[k] = 1/N_k * sigma_new[k]
+            sigma_new[k] = np.einsum('ij,ik,i->jk', x - mu[k], x - mu[k], w_ks_list) / N_k
             print(f"sigma_{k} finished")
             pi_new[k] = N_k/S
             print(f"pi_{k} finished")
@@ -266,11 +263,14 @@ def task2(x, K):
         print(f"Finished iteration {j}")
 
         #Plotting the GMM components
-        plot_GMM(mu_new, sigma_new, pi_new, ax1)
+        ax1 = plot_GMM(mu_new, sigma_new, pi_new, ax1)
+
+        fig1.show()
 
         #drawing random samples
-        plot_samples(mu_new, sigma_new, pi_new, ax2,num_samples)
+        ax2 = plot_samples(mu_new, sigma_new, pi_new, ax2,num_samples)
         
+        fig2.show()
 
     """ End of your code
     """
