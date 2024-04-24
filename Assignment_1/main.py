@@ -38,11 +38,8 @@ def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
     return cost
 
 
-def plot_GMM(mu, sigma, pi):
+def plot_GMM(mu, sigma, pi,ax):
     K = len(mu)
-
-    # Create subplots
-    fig, axs = plt.subplots(K, 2, figsize=(10, 6))
 
     # Plot each GMM component
     for k, (mean, cov, weight) in enumerate(zip(mu, sigma, pi)):
@@ -50,24 +47,59 @@ def plot_GMM(mu, sigma, pi):
         # Plot the covariance matrix
         M = int(np.sqrt(len(mean)))
         mean_reshaped = mean.reshape(M,M)
-        im = axs[k,0].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
+        im = ax[0,k].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
         # Add a colorbar for covariance matrix
-        fig.colorbar(im, ax=axs[k,0])
-        axs[k,0].set_title(f'Mean, k =  {k+1} (Weight: {weight:.2f})')
+        #plt.gcf().colorbar(im, ax=ax[0,k])
+        ax[0,k].set_title(f'Mean')
 
         # Plot the covariance matrix
-        im = axs[k,1].imshow(cov, cmap='viridis', interpolation='nearest')
+        im = ax[1,k].imshow(cov, cmap='viridis', interpolation='nearest')
         # Add a colorbar for covariance matrix
-        fig.colorbar(im, ax=axs[k,1])
+        #plt.gcf().colorbar(im, ax=ax[1,k])
 
         # Set title with weight of the component
-        axs[k,1].set_title(f'Covariance matrix, k =  {k+1} (Weight: {weight:.2f})')
+        ax[1,k].set_title(f'Covariance matrix')
 
     # Adjust layout
     plt.tight_layout()
 
     # Show plot
     plt.show()  
+
+def plot_samples(mu, sigma, pi, ax, num):
+    
+    
+    #TODO: drawing image, that is assigned to this component?
+    for i in range(num//2):
+        for j in range(2):
+            #choosing random component
+            prop = np.random.uniform()
+            threshes = np.cumsum(pi)
+            k= 0
+            for u,t in enumerate(threshes):
+                if prop<=t:
+                    k=u
+                    break
+
+            #########
+            # transforming random sample in a sample from our distribution
+            sample_norm = np.random.randn(mu.shape[1])
+            
+            # Cholesky decomposition of the covariance matrix
+            lower = np.linalg.cholesky(sigma[k,:,:])
+            
+            # Transform standard normal variables to sample from the multivariate normal distribution
+            sample = mu[k,:] + np.dot(lower, sample_norm)
+            #########
+            M = int(np.sqrt(len(sample)))
+            mean_reshaped = sample.reshape(M,M)
+            im = ax[j,i].imshow(mean_reshaped, cmap='viridis', interpolation='nearest')
+            # Add a colorbar for covariance matrix
+            #plt.gcf().colorbar(im, ax=ax[0,k])
+            ax[j,i].set_title(f'k = {k}')
+
+
+    return sample
 ########################################## Helper functions ##########################################
 
 def task1():
@@ -167,7 +199,7 @@ def task2(x, K):
     pi_new = np.copy(pi)
 
 
-    J = 2
+    J = 1
     j = 1
 
     #first iteration is always executed to get the first updated values for the cost function
@@ -184,6 +216,7 @@ def task2(x, K):
 
             for s in range(S):
                 exponents = [-1/2*((x[s,:]-mu[k]).T @ (inv_sig[k] @ (x[s,:]-mu[k]))) for k in range(K)]
+                
                 y_max = np.max(exponents)
                 # -> log sum trick: adding the first maximum in front
                 log_w_ks_enum = np.log(pi[k])-1/2*np.log(det_sig[k]) +exponents[k]
@@ -215,7 +248,6 @@ def task2(x, K):
         #cost = cost_function(x,mu_new, sigma_new, pi_new,mu,sigma, pi)
         cost = 1
 
-        plot_GMM(mu_new, sigma_new, pi_new)
 
         if (cost >= e_1):
             print(f"Remaining cost: {cost} higher than {epsilon}")
@@ -231,10 +263,13 @@ def task2(x, K):
             sigma = np.copy(sigma_new)
             pi = np.copy(pi_new)
             break
-    print("Done")
+        print(f"Finished iteration {j}")
 
-    #Plotting the GMM components
-    
+        #Plotting the GMM components
+        plot_GMM(mu_new, sigma_new, pi_new, ax1)
+
+        #drawing random samples
+        plot_samples(mu_new, sigma_new, pi_new, ax2,num_samples)
         
 
     """ End of your code
@@ -291,7 +326,7 @@ if __name__ == '__main__':
     K = 3 # TODO: adapt the number of GMM components
     gmm_params, fig1 = task2(x_train,K)
 
-    # Task 2: inpainting with conditional GMM
+    # Task 3: inpainting with conditional GMM
     mask = None
     fig2 = task3(x_test,mask,gmm_params)
 
