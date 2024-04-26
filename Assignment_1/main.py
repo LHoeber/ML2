@@ -15,29 +15,52 @@ from scipy.integrate import quad
 
 ########################################## Helper functions ##########################################
 def tol_inverse(A):
-    A = A + np.eye(A.shape[0])*(1e-6)
-    return np.linalg.inv(A)# added small tolerance to avoid non-invertible matrices
+    #add small offset to main diagonal
+    return np.linalg.inv(A+np.eye(A.shape[0])*(1e-6))
 
-def cholesky_det(A):
-    A = A + np.eye(A.shape[0])*(1e-6)
-    lower = np.linalg.cholesky(A)
-    det_L = np.linalg.det(lower)
-    return det_L**2
+def log_cholesky_det_sqrt(A):
+    lower = np.linalg.cholesky(A+np.eye(A.shape[0])*(1e-6))
+    #squareroot of the determinant of A
+    sign, logdet = np.linalg.slogdet(lower)
+    return sign*logdet
 
 def single_gauss(x_s, mu, sigma):
     #take the pseudo-inverse only in case the matrix is not invertible
     exponent = -1/2*((x_s-mu).T @ tol_inverse(sigma) @ (x_s-mu))
     #The factor in front of determinant (2*np.pi)**(x_s.shape[0]/2) leads to overflow error
     #for the responsabilities it cancels out anyway
-    factor = 1/(cholesky_det(sigma)**(1/2))
+    factor = 1/(log_cholesky_det_sqrt(sigma))
     return factor * np.exp(exponent)
 
 def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
-    log_p_2 = np.sum([np.log(np.sum([pi_2[k]*single_gauss(x[s,:],mu_2[k],sigma_2[k]) for k in range(len(pi_2))])) for s in range(x.shape[0])])
-    log_p_1 = np.sum([np.log(np.sum([pi_1[k]*single_gauss(x[s,:],mu_1[k],sigma_1[k]) for k in range(len(pi_1))])) for s in range(x.shape[0])])
-    cost = np.abs(log_p_1-log_p_2)
+    D = sigma_2.shape[1]
+    sum_terms_1 = 0
+    sum_terms_2 = 0
+
+    inv_sig_1 = [tol_inverse(sigma_1[k]) for k in range(K)]
+    log_det_sig_sqrt_1 = [log_cholesky_det_sqrt(sigma_1[k]) for k in range(K)]
+
+    inv_sig_2 = [tol_inverse(sigma_2[k]) for k in range(K)]
+    log_det_sig_sqrt_2 = [log_cholesky_det_sqrt(sigma_2[k]) for k in range(K)]
+    for s in range(x.shape[0]):
+        
+        exponents1 = [np.log(pi_1[k])-D/2*np.log(2*np.pi)-log_det_sig_sqrt_1[k]-1/2*((x[s,:]-mu_1[k]).T @ inv_sig_1[k] @ (x[s,:]-mu_1[k])) for k in range(K)]
+        exponents2 = [np.log(pi_2[k])-D/2*np.log(2*np.pi)-log_det_sig_sqrt_2[k]-1/2*((x[s,:]-mu_2[k]).T @ inv_sig_2[k] @ (x[s,:]-mu_2[k])) for k in range(K)]
+        
+        sum_terms_1 += np.max(exponents1) + np.log(np.sum([np.exp(exponents1[k]-np.max(exponents1)) for k in range(K)]))
+        sum_terms_2 += np.max(exponents2) + np.log(np.sum([np.exp(exponents2[k]-np.max(exponents2)) for k in range(K)]))
+        
+    cost = np.abs(sum_terms_1-sum_terms_2)
     
     return cost
+
+##############################
+# def multivariate_gauss(x, mu, sigma):
+#     k = len(mu)
+#     exponent = -1/2 * (x - mu).T @ np.linalg.inv(sigma) @ (x - mu)
+#     factor = 1 / (np.sqrt(2 * np.pi)**k * np.linalg.det(sigma))
+#     return factor * np.exp(exponent)
+##############################
 
 
 def plot_GMM(mu, sigma, pi,ax):
@@ -120,12 +143,7 @@ def task2(x, K):
         fig1
             - ax[0,k] plot the mean of each k GMM component, the subtitle contains the weight of each GMM component
             - ax[1,k] plot the covariance of each k GMM component
-        fig2 
-            - ax[k,0] plot the selected *first* reshaped line of the k-th covariance matrix
-            - ax[k,1] plot the selected *second* reshaped line of the k-th covariance matrix
-            - ax[k,2] plot the selected *third* reshaped line of the k-th covariance matrix
-            - ax[k,3] plot the selected *fourth* reshaped line of the k-th covariance matrix
-        fig3: 
+        fig2: 
             - plot the 8 samples that were sampled from the fitted GMM
     """
     
@@ -140,9 +158,9 @@ def task2(x, K):
 
     """ Start of your code
     """
-    S = x.shape[0]
-    M = x.shape[1]
-    D = M*M
+    S = x.shape[0] #2000... number of training images
+    M = x.shape[1] #28... width of one image
+    D = M*M        #784... number of pixels in an image
 
     #1.) Flattening data to get proper dimensions
     x = np.reshape(x,(S, M*M))
@@ -158,71 +176,79 @@ def task2(x, K):
     epsilon = 0.5
     J = 20
     j = 1
+    #distances of every sample to the closest centroid -> initialized as infinity
     distances = np.ones(S)*np.inf
-    #pick 3 random samples as starting points for the centroids
+    #centers assigned to each sample image
     center_assignments = np.zeros(S)
     center_assignments_new = np.zeros(S)
+    #pick 3 random samples as starting points for the centroids
     centers = [x[np.random.randint(0,S),:] for k in range(K)]
 
     #stopping criteria 1: max. iterations reached
     while j<=J:
         print(f"Iteration {j}")
+        #a) assignment step
         for s in range(S): # iterate over images
             x_s = x[s,:]
             
             for k in range(K): # iterate over clusters and find closest center
-                
+                #if distance is smaller than the one previously assigned,
+                #assign this as new center
                 if np.linalg.norm(x_s-centers[k])<distances[s]:
                     distances[s] = np.linalg.norm(x_s-centers[k])
                     center_assignments_new[s] = k
 
-        #stopping criteria 2: centers didn't change
+        #stopping criteria 2: assigned centers didn't change anymore
         if np.any(center_assignments-center_assignments_new):
             center_assignments = np.copy(center_assignments_new)
             j = j+1
         else:
             break
 
-        #calculating new centroids
+        #b) update step
+        #calculating new centroids by taking mean over all assigned samples
         for k in range(K):
             assigned_samples = np.where(center_assignments == k)
             new_center = np.mean(x[assigned_samples[0],:], axis=0)
             centers[k] = new_center
 
+    #centers of the converged k-mean algorithm are used to initialize means of GMM
     mu = centers
     print("Done \n")
 
     #4.) EM algorithm
     print("Expectaction Maximization algorithm ...")
-    e_1 = 0.5
+    
     mu_new = np.copy(mu)
     sigma_new = np.copy(sigma)
     pi_new = np.copy(pi)
 
-
-    J = 1
+    #TODO: adjust max. iteration count if it works after the second iteration
+    J = 20
     j = 1
+    e_1 = 0.5
 
     #first iteration is always executed to get the first updated values for the cost function
     while j<= J:
         print(f"Iteration {j}")
 
-        #applying the log sum exp trick to get responsabilities
-        #denum = np.sum([pi[k]*single_gauss(x[s,:],mu[k],sigma[k]) for k in range(K)])
-        
+        #pre-calculate inverse of cov matrix and squareroot of the determinant with offset on main diagonal
+        #stay the same for one iteration
         inv_sig = [tol_inverse(sigma[k]) for k in range(K)]
-        det_sig = [cholesky_det(sigma[k]) for k in range(K)]
+        #TODO: In the second iteration, for some reason all the determinants get 0,why?
+        log_det_sig_sqrt = [log_cholesky_det_sqrt(sigma[k]) for k in range(K)]
 
         for k in range(K):
             w_ks_list = []
 
+            #calculating responsabilities
             for s in range(S):
-                exponents = [-1/2*((x[s,:]-mu[k]).T @ (inv_sig[k] @ (x[s,:]-mu[k]))) for k in range(K)]
+                exponents = [np.log(pi[k])-D/2*np.log(2*np.pi)-log_det_sig_sqrt[k]-1/2*((x[s,:]-mu[k]).T @ inv_sig[k] @ (x[s,:]-mu[k])) for k in range(K)]
                 
                 y_max = np.max(exponents)
                 # -> log sum trick: adding the first maximum in front
-                log_w_ks_enum = np.log(pi[k])-1/2*np.log(det_sig[k]) +exponents[k]
-                log_w_ks_denum = y_max + np.log(np.sum([pi[k]/np.sqrt(det_sig[k])*np.exp(exponents[k]-y_max) for k in range(K)]))
+                log_w_ks_enum = exponents[k]
+                log_w_ks_denum = y_max + np.log(np.sum([np.exp(exponents[k]-y_max) for k in range(K)]))
                
                 w_ks = np.exp(log_w_ks_enum-log_w_ks_denum)
                 w_ks_list.append(w_ks)
@@ -231,6 +257,7 @@ def task2(x, K):
             print(w_ks_list.shape)
             print(f"w_s_{k} finished with dim: {w_ks_list.shape}")
 
+            #calculating remaining parameters
             N_k = np.sum(w_ks_list)
             print(f"N_{k} finished")
             mu_new[k] = (w_ks_list @ x)/N_k
@@ -242,8 +269,9 @@ def task2(x, K):
             print(f"pi_{k} finished")
 
 
-        #cost = cost_function(x,mu_new, sigma_new, pi_new,mu,sigma, pi)
-        cost = 1
+        cost = cost_function(x,mu_new, sigma_new, pi_new,mu,sigma, pi)
+        
+        #TODO: add the actual cost function once sigma is invertible after the first iteration
 
 
         if (cost >= e_1):
@@ -260,7 +288,7 @@ def task2(x, K):
             sigma = np.copy(sigma_new)
             pi = np.copy(pi_new)
             break
-        print(f"Finished iteration {j}")
+        print(f"Finished iteration {j-1}")
 
         #Plotting the GMM components
         ax1 = plot_GMM(mu_new, sigma_new, pi_new, ax1)
@@ -303,7 +331,52 @@ def task3(x, mask, m_params):
 
     """ Start of your code
     """
+    mu, sigma, pi = m_params
 
+    #1. masking
+    M = x.shape[1]
+    x_flat = np.reshape(x,(S, M*M))
+    x_masked = np.array([np.multiply(x_s,mask) for x_s in x_flat])
+    # plotting the masked image versions
+    for s in range(S):
+        ax[s,0].imshow(x_masked[s].reshape(M,M), vmin=0, vmax=1., cmap='gray')
+
+    ############################
+    # num_images, height, width = x.shape
+
+    # # Flatten images and mask for easier manipulation
+    # flattened_images = x.reshape(num_images, -1)
+    # flattened_mask = mask
+
+    # # Initialize inpainted_images with original images
+    # inpainted_images = flattened_images
+
+    # # Loop over each image
+    # for i in range(num_images):
+    #     # Get masked pixels for the current image
+    #     masked_pixels = x_masked[i,:]
+
+    #     # Loop over each masked pixel
+    #     for j, pixel in enumerate(masked_pixels):
+    #         # Compute posterior probabilities for each GMM component
+    #         posteriors = []
+    #         for k in range(pi.shape[0]):
+    #             posterior = pi[k] * multivariate_gauss(pixel, mu[k], sigma[k])
+    #             posteriors.append(posterior)
+            
+    #         # Normalize posterior probabilities
+    #         posteriors /= np.sum(posteriors)
+    #         #TODO: use actual posteriors, once the GMM works
+    #         posteriors = [0.4,0.1,0.5]
+
+    #         # Sample a GMM component based on posterior probabilities
+    #         selected_component = np.random.choice(len(posteriors), p=posteriors)
+
+    #         # Sample from the selected GMM component
+    #         sampled_pixel = np.random.multivariate_normal(mu[selected_component], sigma[selected_component])
+
+    #         # Replace masked pixel with sampled pixel in inpainted image
+    #         #inpainted_images[i,j] = sampled_pixel
 
 
     """ End of your code
@@ -327,7 +400,8 @@ if __name__ == '__main__':
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 3: inpainting with conditional GMM
-    mask = None
+    mask = np.random.uniform(0,1,x_train.shape[1]**2)
+    mask = [1 if x>=0.9 else 0 for x in mask]
     fig2 = task3(x_test,mask,gmm_params)
 
     for f in fig1:
