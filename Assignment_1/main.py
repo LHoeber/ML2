@@ -54,14 +54,6 @@ def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
     
     return cost
 
-##############################
-# def multivariate_gauss(x, mu, sigma):
-#     k = len(mu)
-#     exponent = -1/2 * (x - mu).T @ np.linalg.inv(sigma) @ (x - mu)
-#     factor = 1 / (np.sqrt(2 * np.pi)**k * np.linalg.det(sigma))
-#     return factor * np.exp(exponent)
-##############################
-
 
 def plot_GMM(mu, sigma, pi,ax):
     K = len(mu)
@@ -75,17 +67,14 @@ def plot_GMM(mu, sigma, pi,ax):
         ax[0,k].imshow(mean_reshaped, cmap='gray', interpolation='nearest')
         # Add a colorbar for covariance matrix
         #plt.gcf().colorbar(im, ax=ax[0,k])
-        ax[0,k].set_title(f'Mean')
+        ax[0,k].set_title(fr'k = {k}, $\pi_{k}$ = {pi[k]}')
 
         # Plot the covariance matrix
         ax[1,k].imshow(cov, cmap='viridis', interpolation='nearest')
         # Add a colorbar for covariance matrix
         #plt.gcf().colorbar(im, ax=ax[1,k])
 
-        # Set title with weight of the component
-        ax[1,k].set_title(f'Covariance matrix')
     
-    plt.tight_layout()
 
     return ax 
 
@@ -121,7 +110,6 @@ def plot_samples(mu, sigma, pi, ax, num):
             #plt.gcf().colorbar(im, ax=ax[0,k])
             ax[j,i].set_title(f'k = {k}')
 
-    plt.tight_layout()
 
     return ax
 ########################################## Helper functions ##########################################
@@ -173,7 +161,6 @@ def task2(x, K):
 
     #3.) Initialization of means with k-means algorithm
     print("Initialization of mu with k-means algorithm ...")
-    epsilon = 0.5
     J = 20
     j = 1
     #distances of every sample to the closest centroid -> initialized as infinity
@@ -226,7 +213,7 @@ def task2(x, K):
     #TODO: adjust max. iteration count if it works after the second iteration
     J = 20
     j = 1
-    e_1 = 0.5
+    e_1 = 1e-6
 
     #first iteration is always executed to get the first updated values for the cost function
     while j<= J:
@@ -283,7 +270,7 @@ def task2(x, K):
             j = j+1
             
         else:
-            print("Algorithm converged.")
+            print(f"Algorithm converged after {j-1} iterations.")
             mu = np.copy(mu_new)
             sigma = np.copy(sigma_new)
             pi = np.copy(pi_new)
@@ -294,11 +281,15 @@ def task2(x, K):
         ax1 = plot_GMM(mu_new, sigma_new, pi_new, ax1)
 
         fig1.show()
+        fig1.tight_layout()
+        fig1.savefig("./Task_2_fig_1.png")
 
         #drawing random samples
         ax2 = plot_samples(mu_new, sigma_new, pi_new, ax2,num_samples)
         
         fig2.show()
+        fig2.tight_layout()
+        fig2.savefig("./Task_2_fig_2.png")
 
     """ End of your code
     """
