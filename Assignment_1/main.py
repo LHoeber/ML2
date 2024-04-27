@@ -16,10 +16,10 @@ from scipy.integrate import quad
 ########################################## Helper functions ##########################################
 def tol_inverse(A):
     #add small offset to main diagonal
-    return np.linalg.inv(A+np.eye(A.shape[0])*(1e-6))
+    return np.linalg.inv(A+np.eye(A.shape[1])*(1e-6))
 
 def log_cholesky_det_sqrt(A):
-    lower = np.linalg.cholesky(A+np.eye(A.shape[0])*(1e-6))
+    lower = np.linalg.cholesky(A+np.eye(A.shape[1])*(1e-6))
     #squareroot of the determinant of A
     sign, logdet = np.linalg.slogdet(lower)
     return sign*logdet
@@ -53,6 +53,21 @@ def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
     cost = np.abs(sum_terms_1-sum_terms_2)
     
     return cost
+
+def stable_posterior(x,weights,mu, sigma):
+    posts = []
+    for i in range(len(weights)):
+
+        dim = sigma[0].shape[0]
+        exponents = [np.log(weights[k])-dim/2*np.log(2*np.pi)-log_cholesky_det_sqrt(sigma[k])-1/2*((x-mu[k]).T @ tol_inverse(sigma[k]) @ (x-mu[k])) for k in range(K)]
+                    
+        y_max = np.max(exponents)
+        # -> log sum trick: adding the first maximum in front
+        log_post_enum = exponents[i]
+        log_post_denum = y_max + np.log(np.sum([np.exp(exponents[k]-y_max) for k in range(K)]))
+        posts.append(log_post_enum-log_post_denum)
+        
+    return  [np.exp(post) for post in posts]
 
 
 def plot_GMM(mu, sigma, pi,ax):
@@ -94,18 +109,16 @@ def plot_samples(mu, sigma, pi, ax, num):
                     break
 
             #########
-            # transforming random sample in a sample from our distribution
+            # transforming random sample from a standard normal distribution into a sample from our distribution
+            # this is essentially the reverse calculation to the z-transform z = (x-mu)/sigma  ->  x = mu +sigma*z
+            # the cholesky decomposition of the determinant is like taking its root
             sample_norm = np.random.randn(mu.shape[1])
-            
-            # Cholesky decomposition of the covariance matrix
             lower = np.linalg.cholesky(sigma[k,:,:]+ np.eye(sigma.shape[1])*(1e-6))
-            
-            # Transform standard normal variables to sample from the multivariate normal distribution
-            sample = mu[k,:] + np.dot(lower, sample_norm)
+            sample = mu[k,:] + lower @ sample_norm
             #########
             M = int(np.sqrt(len(sample)))
-            mean_reshaped = sample.reshape(M,M)
-            im = ax[j,i].imshow(mean_reshaped, cmap='gray', interpolation='nearest')
+            sample_reshaped = sample.reshape(M,M)
+            im = ax[j,i].imshow(sample_reshaped, cmap='gray', interpolation='nearest')
             # Add a colorbar for covariance matrix
             #plt.gcf().colorbar(im, ax=ax[0,k])
             ax[j,i].set_title(f'k = {k}')
@@ -262,7 +275,7 @@ def task2(x, K):
 
 
         if (cost >= e_1):
-            print(f"Remaining cost: {cost} higher than {epsilon}")
+            print(f"Remaining cost: {cost} higher than {e_1}")
             mu = np.copy(mu_new)
             sigma = np.copy(sigma_new)
             pi = np.copy(pi_new)
@@ -270,7 +283,7 @@ def task2(x, K):
             j = j+1
             
         else:
-            print(f"Algorithm converged after {j-1} iterations.")
+            print(f"Algorithm converged after {j} iterations.")
             mu = np.copy(mu_new)
             sigma = np.copy(sigma_new)
             pi = np.copy(pi_new)
@@ -309,67 +322,65 @@ def task3(x, mask, m_params):
             - ax[s,2] plot the groundtruth test sample s 
     """
     
+    #TODO: it does something, but not the right thing
+    mu, sigma, pi = m_params
+    K = len(pi)
+    M = x.shape[2]
     S, sz, _ = x.shape
 
-    fig, ax = plt.subplots(S,3,figsize=(3,8))
+    fig, ax = plt.subplots(S, 3, figsize=(3, 8))
     fig.suptitle('Task 3 - Conditional GMM', fontsize=12)
     for a in ax.reshape(-1):
         a.axis('off')
-        
-    ax[0,0].set_title('Condition',fontsize=8), ax[0,1].set_title('Posterior Exp.',fontsize=8), ax[0,2].set_title('Groundtruth',fontsize=8)
+
+    ax[0, 0].set_title('Condition', fontsize=8), ax[0, 1].set_title('Posterior Exp.', fontsize=8), ax[0, 2].set_title('Groundtruth', fontsize=8)
     for s in range(S):
-        ax[s,2].imshow(x[s], vmin=0, vmax=1., cmap='gray')
+        ax[s, 2].imshow(x[s], vmin=0, vmax=1., cmap='gray')
 
     """ Start of your code
     """
-    mu, sigma, pi = m_params
 
-    #1. masking
-    M = x.shape[1]
-    x_flat = np.reshape(x,(S, M*M))
-    x_masked = np.array([np.multiply(x_s,mask) for x_s in x_flat])
-    # plotting the masked image versions
+    x_2_indices = np.where(mask)[0]
+    x_1_indices = np.where([1-n for n in mask])[0]
+
     for s in range(S):
-        ax[s,0].imshow(x_masked[s].reshape(M,M), vmin=0, vmax=1., cmap='gray')
+        x_flat = np.reshape(x[s,:,:], (M * M))
+        x_masked_flat = x_flat*mask
 
-    ############################
-    # num_images, height, width = x.shape
+        #masked image
+        ax[s, 0].imshow(np.reshape(x_flat*mask, (M,M)), vmin=0, vmax=1., cmap='gray')
 
-    # # Flatten images and mask for easier manipulation
-    # flattened_images = x.reshape(num_images, -1)
-    # flattened_mask = mask
+        x_1 = x_flat[x_1_indices]
+        x_2 = x_flat[x_2_indices]
 
-    # # Initialize inpainted_images with original images
-    # inpainted_images = flattened_images
+        mu_1 = mu[:,x_1_indices]
+        sigma_11 = sigma[:,x_1_indices, :][:,:, x_1_indices]
+        mu_2 = mu[:,x_2_indices]
+        sigma_22 = sigma[:,x_2_indices, :][:,:, x_2_indices]
+        
+        sigma_12 = sigma[:,x_1_indices, :][:,:, x_2_indices]
+        sigma_21 = sigma[:,x_2_indices, :][:,:, x_1_indices]
 
-    # # Loop over each image
-    # for i in range(num_images):
-    #     # Get masked pixels for the current image
-    #     masked_pixels = x_masked[i,:]
-
-    #     # Loop over each masked pixel
-    #     for j, pixel in enumerate(masked_pixels):
-    #         # Compute posterior probabilities for each GMM component
-    #         posteriors = []
-    #         for k in range(pi.shape[0]):
-    #             posterior = pi[k] * multivariate_gauss(pixel, mu[k], sigma[k])
-    #             posteriors.append(posterior)
+        mu_1con2 = [mu_1[k,:] + sigma_12[k,:,:] @tol_inverse(sigma_22[k,:,:]) @ (x_2 -mu_2[k,:]) for k in range(K)]
+        sigma_1con2 = [sigma_11[k,:,:] - sigma_12[k,:,:] @ tol_inverse(sigma_22[k,:,:]) @ sigma_21[k,:,:] for k in range(K)]
             
-    #         # Normalize posterior probabilities
-    #         posteriors /= np.sum(posteriors)
-    #         #TODO: use actual posteriors, once the GMM works
-    #         posteriors = [0.4,0.1,0.5]
+        #pi_1con2_unnormed = [pi[k]*1/(np.sqrt(2*np.pi)*np.exp(log_cholesky_det_sqrt(sigma_22[k,:,:])))*np.exp(-1/2*(x_2-mu_2[k,:]).T @ tol_inverse(sigma_22[k,:,:])@(x_2-mu_2[k,:])) for k in range(K)]
+        #pi_1con2 = [val/sum(pi_1con2_unnormed) for val in pi_1con2_unnormed]
+        pi_1con2 = stable_posterior(x_2,pi,mu_2,sigma_22)
 
-    #         # Sample a GMM component based on posterior probabilities
-    #         selected_component = np.random.choice(len(posteriors), p=posteriors)
+        #posterior_unnormed = [pi_1con2[k]*1/(np.sqrt(2*np.pi)*np.exp(log_cholesky_det_sqrt(sigma_1con2[k][:,:])))*np.exp(-1/2*(x_1-mu_1con2[k]).T @ tol_inverse(sigma_1con2[k][:,:])@(x_1-mu_1con2[k])) for k in range(K)]
+        posteriors = stable_posterior(x_1,pi_1con2,mu_1con2, sigma_1con2)
+        #TODO: this is temporary, the caclulation is still unstable and it doesn't make sense to use x_1, wich
 
-    #         # Sample from the selected GMM component
-    #         sampled_pixel = np.random.multivariate_normal(mu[selected_component], sigma[selected_component])
+        restored_image = np.zeros(M*M)
+        #posterior expectation
+        restored_image[x_1_indices] = np.dot(posteriors,mu_1con2)
+        restored_image[x_2_indices] = x_2
 
-    #         # Replace masked pixel with sampled pixel in inpainted image
-    #         #inpainted_images[i,j] = sampled_pixel
+        #posterior
+        ax[s, 1].imshow(np.reshape(restored_image,(M,M)), vmin=0, vmax=1., cmap='gray')
 
-
+    
     """ End of your code
     """
 
