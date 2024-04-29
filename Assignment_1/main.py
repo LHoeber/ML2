@@ -322,7 +322,7 @@ def task3(x, mask, m_params):
             - ax[s,2] plot the groundtruth test sample s 
     """
     
-    #TODO: it does something, but not the right thing
+    #TODO: it does something, but probably not the right thing
     mu, sigma, pi = m_params
     K = len(pi)
     M = x.shape[2]
@@ -374,7 +374,7 @@ def task3(x, mask, m_params):
 
         restored_image = np.zeros(M*M)
         #posterior expectation
-        restored_image[x_1_indices] = np.dot(posteriors,mu_1con2)
+        restored_image[x_1_indices] = np.dot(pi_1con2,mu_1con2)
         restored_image[x_2_indices] = x_2
 
         #posterior
