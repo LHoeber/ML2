@@ -54,7 +54,7 @@ def cost_function(x, mu_2,sigma_2,pi_2, mu_1,sigma_1,pi_1):
     
     return cost
 
-def stable_posterior(x,weights,mu, sigma):
+def stable_cond_weights(x,weights,mu, sigma):
     posts = []
     for i in range(len(weights)):
 
@@ -76,20 +76,13 @@ def plot_GMM(mu, sigma, pi,ax):
     # Plot each GMM component
     for k, (mean, cov, weight) in enumerate(zip(mu, sigma, pi)):
         # Plot the mean
-        # Plot the covariance matrix
         M = int(np.sqrt(len(mean)))
         mean_reshaped = mean.reshape(M,M)
         ax[0,k].imshow(mean_reshaped, cmap='gray', interpolation='nearest')
-        # Add a colorbar for covariance matrix
-        #plt.gcf().colorbar(im, ax=ax[0,k])
         ax[0,k].set_title(fr'k = {k}, $\pi_{k}$ = {pi[k]}')
 
         # Plot the covariance matrix
         ax[1,k].imshow(cov, cmap='viridis', interpolation='nearest')
-        # Add a colorbar for covariance matrix
-        #plt.gcf().colorbar(im, ax=ax[1,k])
-
-    
 
     return ax 
 
@@ -132,7 +125,7 @@ def task1():
     
     """ Start of your code
     """
-
+    
     
     """ End of your code
     """
@@ -363,14 +356,11 @@ def task3(x, mask, m_params):
 
         mu_1con2 = [mu_1[k,:] + sigma_12[k,:,:] @tol_inverse(sigma_22[k,:,:]) @ (x_2 -mu_2[k,:]) for k in range(K)]
         sigma_1con2 = [sigma_11[k,:,:] - sigma_12[k,:,:] @ tol_inverse(sigma_22[k,:,:]) @ sigma_21[k,:,:] for k in range(K)]
-            
+        
+        #the posterior calculation is actually not necessary!
         #pi_1con2_unnormed = [pi[k]*1/(np.sqrt(2*np.pi)*np.exp(log_cholesky_det_sqrt(sigma_22[k,:,:])))*np.exp(-1/2*(x_2-mu_2[k,:]).T @ tol_inverse(sigma_22[k,:,:])@(x_2-mu_2[k,:])) for k in range(K)]
         #pi_1con2 = [val/sum(pi_1con2_unnormed) for val in pi_1con2_unnormed]
-        pi_1con2 = stable_posterior(x_2,pi,mu_2,sigma_22)
-
-        #posterior_unnormed = [pi_1con2[k]*1/(np.sqrt(2*np.pi)*np.exp(log_cholesky_det_sqrt(sigma_1con2[k][:,:])))*np.exp(-1/2*(x_1-mu_1con2[k]).T @ tol_inverse(sigma_1con2[k][:,:])@(x_1-mu_1con2[k])) for k in range(K)]
-        posteriors = stable_posterior(x_1,pi_1con2,mu_1con2, sigma_1con2)
-        #TODO: this is temporary, the caclulation is still unstable and it doesn't make sense to use x_1, wich
+        pi_1con2 = stable_cond_weights(x_2,pi,mu_2,sigma_22)
 
         restored_image = np.zeros(M*M)
         #posterior expectation
@@ -402,9 +392,12 @@ if __name__ == '__main__':
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 3: inpainting with conditional GMM
-    mask = np.random.uniform(0,1,x_train.shape[1]**2)
-    mask = [1 if x>=0.9 else 0 for x in mask]
+    mask = np.zeros(x_train.shape[1]**2)
+    n = int(0.1*x_train.shape[1]**2)
+    mask_indices = [int(val) for val in np.random.choice(np.linspace(0,len(mask)-1,len(mask)),n,replace=False)]
+    mask[mask_indices] = 1
     fig2 = task3(x_test,mask,gmm_params)
+    
 
     for f in fig1:
         pdf.savefig(f)
