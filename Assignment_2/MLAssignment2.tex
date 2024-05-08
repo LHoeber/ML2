@@ -1,0 +1,195 @@
+\documentclass{article}
+\usepackage[utf8x]{inputenc}
+\usepackage[margin=0.7in]{geometry}
+\usepackage[colorlinks=true, linkcolor=black, citecolor=red]{hyperref}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage{amsmath, amssymb, bm}
+
+\usepackage{array}
+\usepackage[ruled,vlined,noline]{algorithm2e}
+\usepackage{epsfig}
+\usepackage{hyperref} 
+\usepackage{cleveref}
+\usepackage{cite}
+\usepackage{glossaries}
+\usepackage{natbib}
+\usepackage{makecell}
+\usepackage{tikz}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{xcolor}
+
+\DeclareOldFontCommand{\rm}{\normalfont\rmfamily}{\mathrm}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\sig}{\boldsymbol{\Sigma}}
+\newcommand{\m}{\boldsymbol{\mu}}
+\renewcommand{\vec}[1]{\textbf{#1}}
+
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\renewcommand\arraystretch{1.8}
+\DeclareOldFontCommand{\rm}{\normalfont\rmfamily}{\mathrm}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\deadline}{\noindent\textbf{Deadline:}\xspace}
+\newcommand{\submission}{\noindent\textbf{Submission:}\xspace}
+\newcommand{\implementation}{\noindent\textbf{Implementation:}\xspace}
+\newcommand{\bonus}[1]{\section*{Bonus: \textnormal{(#1 points)}}}
+\newcommand{\note}{\paragraph*{Note:}}
+\newcommand{\eg}{\emph{e.g.}\xspace}
+\newcommand{\ie}{\emph{i.e.}\xspace}
+\newcommand{\wrt}{\emph{w.r.t.}\xspace}
+\newcommand{\psnr}{\ensuremath{\text{PSNR}}\xspace}
+\newcommand{\mse}{\ensuremath{\text{MSE}}\xspace}
+\newcommand{\task}[2]{\section{#1\hspace{0.3cm}\textnormal{(#2 points)}}}
+
+
+\title{{\Huge \textbf{Assignment 2}} \\ {\Large \textbf{Machine Learning 2}}}
+\author{Lea Bogensperger, \texttt{lea.bogensperger@icg.tugraz.at}\vspace{-0.4cm} \\ Benedikt Kantz, \texttt{benedikt.kantz@student.tugraz.at}}
+
+\date{April 30, 2024}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+
+\renewcommand{\vec}[1]{\textbf{#1}}
+\newcommand{\mat}[1]{\textbf{#1}}
+
+%\setlength\parindent{0pt}
+
+\begin{document}
+\maketitle
+
+\vspace{0.5cm}
+\deadline
+May 21, 2024 at 23:55h.
+
+\submission 
+Upload your report (\texttt{report.pdf}), your implementation (\texttt{features\_and\_kernels.py}) and your figure file (\texttt{figures.pdf}) to the TeachCenter. Please do not zip your files. Please use the provided framework-file for your implementation.
+
+
+\section{Gaussian Kernel Approximation (8P)} \label{sec:randFeatKernels}
+In machine learning, we can make use of feature transform $\varphi(\vec x)$ to transform our $D$-dimensional data $\vec x_i \in \mathbb{R}^D$. To deal with infinite-dimensional representations, we can instead directly work with kernels $k(\vec x,\vec x')$ which can be constructed by 
+\[
+k(\vec x,\vec x') = \langle \varphi(\vec x),\varphi(\vec x') \rangle_{\mathcal{V}}.
+\]
+In~\citep{rahimi2007random} it was proposed to tackle this inner product by using approximations $z: \mathbb{R}^{D} \to \mathbb{R}^{R}$ which establishes the following:
+\begin{equation}\label{eq:approx}
+k(\vec x,\vec x') = \langle \varphi(\vec x),\varphi(\vec x') \rangle_{\mathcal{V}} \approx z(\vec x)^T z (\vec x').
+\end{equation}
+\subsection{Random Fourier Features}
+The authors in~\citep{rahimi2007random} show that random Fourier feature transforms correspond to a Gaussian kernel. For realizations $\{\boldsymbol \omega_r \}_{r=1}^R$ with $ \boldsymbol \omega_r \sim \mathcal{N}^D(\vec 0 ,\vec I)$ and $\{ b_r\}_{r=1}^R$ with $ b_r \sim \mathcal{U}_{[0,2\pi]}$ the feature transform is constructed using
+\begin{equation}\label{eq:rff}
+z_{\boldsymbol \omega_r} ( \vec x)=\sqrt{\tfrac{2}{R}} \cos(\boldsymbol \omega_r ^T \vec x +  b_r).
+\end{equation}
+Then, the corresponding Gauss kernel is given by 
+\[
+k(\vec x, \vec x')=\exp(-\frac{\Vert \vec x - \vec x'\Vert^2}{2}),
+\]
+which will be shown in the lecture. The goal of this task is to show this qualitatively. 
+
+
+\subsubsection*{Tasks}
+\begin{enumerate}
+    \item Explicitly state the dimensions of the components $\boldsymbol \omega_r$ and $b_r$ that constitute the random Fourier transform. 
+    \item You are given $N=1000$ data points $\vec x_i \in \mathbb{R}^D$ with $D=2$. Implement the left and right side of~\eqref{eq:approx}, where you compare different choices for $R \in \{1,10,100,1000\}$ for the right side. Compute the kernel matrix $\mat K$ where each element $K_{ij} = k(\vec x_i, \vec x_j')$ for all $i=1,\dots,N$ and $j=1,\dots,N$ such that you can generate a 2D plot using $\texttt{matplotlib.imshow}$ of your kernel. Create the same plot for your feature approximations for each $R$. 
+    \item Discuss your results.
+\end{enumerate}
+
+
+\subsection{Random Gauss Features}
+Interestingly, also random Gauss features $\varphi_{\vec t}(\vec x)$ for $\vec t \sim \mathcal{U}^D_{[a,b]}$ correspond to a Gauss kernel $k(\vec x, \vec x')$. The feature transform is
+\[
+\varphi_{\vec t } (\vec x) = \exp \big ( -\frac{\Vert \vec x - \vec t\Vert^2}{2\sigma^2} \big ), 
+\]
+which can be discretized to
+\begin{equation}\label{eq:randGaussfeat}
+z_{\vec t}(\vec x) = \sqrt{\tfrac{1}{R}} \exp \big (-\frac{\Vert \vec x - \vec t \Vert^2}{2\sigma^2}\big ).
+\end{equation}
+The corresponding kernel is then given by
+\begin{equation}
+k(\vec x, \vec x') = c_1 c_2 \exp \big (-\frac{\Vert \vec x - \vec x' \Vert^2}{4\sigma^2}\big ),
+\end{equation}
+where $c_1$ is a constant that is related to $\vec t \sim \mathcal{U}^D_{[a,b]}$. Moreover, $c_2$ is a constant that appears from the normalization constant when taking the integral over an unnormalized Gaussian distribution. 
+In general, the starting point to compute the kernel from the feature transform is given by
+\begin{equation}\label{eq:start_feat_to_kernel}
+k(\vec x , \vec x') = \mathbb{E}_{\vec t} \big [ \langle \varphi_{\vec t}(\vec x),\varphi_{\vec t}(\vec x') \rangle \big ] = \int_{-\infty}^\infty p(\vec t)~ \langle \varphi_{\vec t}(\vec x),\varphi_{\vec t}(\vec x') \rangle ~d{\vec t}.
+\end{equation}
+
+\subsubsection*{Tasks}
+\begin{enumerate}
+    \item Compute the kernel in~\eqref{eq:start_feat_to_kernel}. Start by assuming that since $p(\vec t)$ is a uniform distribution, it can be merged into a constant term $c_1$ and then combine the two exponential terms. Then, re-formulate the resulting expression within the integral into the form of $ g(\vec x, \vec x') f(\vec t, \vec x, \vec x')$ by bringing $f(\vec t)$ into the form of a Gaussian distribution in $\vec t$.
+\textit{Hint:} use a quadratic expansion to obtain these expressions. \\    
+    Then, the constant $c_2$ is the normalization constant of that Gaussian $f(\vec t, \vec x, \vec x')$. 
+    \item Again, implement the computed kernel for the left side and the feature transform with $R \in \{1,10,100,1000\}$ for the right side of~\eqref{eq:approx} for the given data. You can set $c_1=c_2=1$ and $\sigma=1$. Note that although we use the assumption $\vec t \sim \mathcal{U}^D_{[a,b]}$, the approximation is better if you sample $\vec t$ from the data samples $\vec x_i$ as they are distributed sparsely. 
+    \item Discuss your results.
+\end{enumerate}
+
+Implement both subtasks in \texttt{task1} of \texttt{features\_and\_kernels.py}. 
+
+\section{Least Squares Regression (12P)} \label{sec:lsq}
+The goal in this subtask is to now use the random feature transforms from the previous task to solve a linear regression problem in a least squares setting. 
+Assume we again have input data $\boldsymbol{\mathsf{x}} = \{ \vec x_i\}$, with $i=1,\dots,N$ and $\vec x_i \in \mathbb{R}^D$ D-dimensional samples. Moreover, you are provided associated targets $\boldsymbol{\mathsf{y}}= \{ y_i\}$ with $ y_i \in \mathbb{R}$.
+The goal is to model the underlying relation between training input data $\boldsymbol{\mathsf{x}}$ and targets $\boldsymbol{\mathsf{y}}$ and apply this to new, unseen test data by minimizing the regularized least squares error function
+\begin{eqnarray}\label{eq:lsq}
+\bm \theta^\ast = \arg \min_{\bm \theta \in \mathbb{R}^R} \frac{1}{2} \sum_{i=1}^N \bigg(\bm \theta^T z( \vec x_i) - y_i\bigg)^2  + \frac \lambda 2  \Vert \bm  \theta \Vert_2^2.
+\end{eqnarray}
+Again, the non-linear feature transform $z(\cdot)$ lifts the input data $\vec x_i$ to a higher-dimensional space with $R$ features. We are using both the random Fourier features from~\eqref{eq:rff} and random Gauss features from~\eqref{eq:randGaussfeat}. 
+The additional regularization term is balanced by $\lambda \in \mathbb{R}^+$ and penalizes large parameters $\bm \theta$. 
+Evaluation metrics for predictions $\hat{\boldsymbol{\mathsf{y}}}$ are computed using the mean squared error:
+\begin{eqnarray} \label{eq:quadloss}
+\mathcal{L}(\boldsymbol{\mathsf{y}},\hat{\boldsymbol{\mathsf{y}}}) = \frac 1 N \sum_{i=1}^N ( y_i - \hat{y}_i)^2.
+\end{eqnarray}
+
+\subsection*{Tasks}
+\begin{enumerate}
+    \item Rewrite eq.~\eqref{eq:lsq} in pure matrix/vector notation, such that there are no sums left in the final expression. Use $\Phi = z(\boldsymbol{\mathsf{x}})$ for the feature transform which can be computed prior to the optimization.
+    Additionally, state the matrix/vector dimensions of all occurring variables.
+    \item Analytically derive the optimal parameters $\bm \theta^\ast$ from eq.~\eqref{eq:lsq}.
+        \item Give an analytic expression to compute predictions $\hat{\boldsymbol{\mathsf{y}}}$ given $\bm \theta^\ast$.   
+     \item A training set with $N=200$ data samples and a test set with $N_{t}=100$ data samples with $D=5$ is already provided for you. Implement the computation of $\bm \theta^\ast$ from the training data. 
+     \item Carefully choose the hyperparameter $\lambda \in \R^+$ and explain your choice. What can you say about its influence?
+     \item For both feature transforms: run the experiment for a number of feature vectors $R =  \{0,1,2,...,100\}$ and save the training and test loss in each run. 
+     Further, compute the mean squared error denoted in eq.~\eqref{eq:quadloss} for both the training and test data based on the optimal parameters $\bm \theta^\ast$.
+     Repeat each experiment 5 times to obtain an averaged score on your metrics. 
+		\item For both feature transforms: plot both the averaged (over the $5$ runs) train and test errors depending on the number of feature vectors $R$ in the same plot. Include the standard deviation of each setting in addition to the mean loss. Give an interpretation of your results and discuss the performance of both feature transforms.
+\end{enumerate}
+
+
+\paragraph{Implementation details}
+\begin{itemize}
+    \item If you want to plot the standard deviation $\pm \sigma$ in addition to an averaged curve use $\texttt{matplotlib.pyplot.fill\_between}$, where the parameters $\texttt{y1}$ and $\texttt{y2}$ denote $\mu - \sigma$ and $\mu + \sigma$, respectively. You can set an $\texttt{alpha}$ value for blending.
+\end{itemize}
+
+Implement the least squares regression in \texttt{task2} of \texttt{features\_and\_kernels.py}.
+
+\section{Dual Representation (5P)}
+The linear least squares problem from Task~\ref{sec:lsq} can be reformulated in its dual representation, where an equivalent solution can be obtained. 
+Thus, the corresponding dual problem is given by
+\begin{eqnarray} \label{eq:dual}
+\bm a^* = \arg \min_{\bm a \in \mathbb{R}^N} \frac 1 2 \bm a^T \mathbf K \bm a +\frac \lambda 2 \Vert \bm a + \bm y \Vert_2^2,
+\end{eqnarray} 
+using the kernel matrix $\mathbf K = \Phi \Phi^T \in \mathbb{R}^{N\times N}$.
+Having knowledge on either the feature transform $z(\vec x)$ or the corresponding kernel $k(\vec x,\vec x') \approx z(\vec x)^T z(\vec x')$ allows us to operate very flexible in either the primal or the dual domain. The corresponding kernels to the random Fourier and Gauss features were already computed in Task 1. 
+
+Hence, similar to Task~\ref{sec:lsq} the dual solution can be obtained in closed-form and can be subsequently used to make predictions for unseen test data $\vec x$.
+The relation between the primal solutions $\bm \theta$ required for making new predictions and the dual variable $\vec a$ is as follows:
+\begin{eqnarray} \label{eq:rel_primal_dual}
+\bm \theta = -\frac 1 \lambda \Phi^T \bm a.
+\end{eqnarray}
+
+\subsection*{Tasks}
+\begin{enumerate}
+\item Analytically compute the optimal parameters $\bm a^*$ from~\eqref{eq:dual}. State the dimension of the resulting matrix that has to be inverted in the process and compare them those required in Task~\ref{sec:lsq}. When is it favourable to use the primal and when the dual solution?
+\item Give an analytic expression to compute predictions $\hat{\boldsymbol{\mathsf{y}}}$ given $\bm a^\ast$ using eq.~\eqref{eq:rel_primal_dual}, such that you only rely on $\mathbf K$ and do not need to compute the features $\Phi$ explicitely. 
+\item For the train data $\boldsymbol{\mathsf{x}}$ implement both kernel matrices (corresponding to each the random Fourier and Gauss features). Repeat the same process for the test data, ensuring that the resulting kernel matrices are of dimensionality $\mathbb{R}^{N \times N}$ and $\mathbb{R}^{N_{t} \times N}$, respectively.
+\item Implement the computation of $\bm a^*$ and report the mean squared error on the train and test data, using the same $\lambda \in \mathbb{R}^+$ that you have chosen in the previous task. 
+Compare train and test errors obtained with the primal solution for each setting of $R$ with the dual solution.
+\end{enumerate}
+
+Implement the dual problem also in \texttt{task2} of \texttt{features\_and\_kernels.py}. 
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
