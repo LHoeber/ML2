@@ -48,7 +48,10 @@ def task1():
 
     """ Start of your code 
     """
+    print(f"Dimension of X: {X.shape}")
     #1)Kernel matrix
+    print("\nRandom Fourier features:")
+    #1.1) random fourier features
     # exact implementation (left side)
     K_left = np.zeros((N,N))
     for i in range(N):
@@ -70,18 +73,58 @@ def task1():
         W = np.random.multivariate_normal(np.zeros(D),np.eye(D),R)
         B = [np.random.uniform(0,2*np.pi) for r in range(R)]
         
-        print("begin Z kernel")
-        #this double loop probably causes the most delay
+        # shape of X = N x D
+        # shape of Z = N x R
+        # shape of W = R x D
+        # shape of B = R
+        print(f"Dimension of W: {W.shape}")
+        print(f"Dimension of B: {np.array(B).shape}")
         Z = np.sqrt(2 / R) * np.cos(X @ W.T + B)
+        print(f"Dimension of Z: {Z.shape}")
         K_right = Z.dot(Z.T)
         K_rights.append(K_right)
         
         #plotting
         img = axes[0,m].imshow(K_right)
         colorbar = fig.colorbar(img, ax=axes[0,m])
-        
-        
 
+    #1.2) random gauss features
+    print("\nRandom gauss features:")
+    # exact implementation (left side)
+    K_left = np.zeros((N,N))
+    for i in range(N):
+        for j in range(N):
+            Kij = np.exp(-1/4*(X[i,:] - X[j,:]).T @ (X[i,:] - X[j,:]))
+            K_left[i,j] = Kij
+
+    #plotting
+    img = axes[1,4].imshow(K_left)
+    colorbar = fig.colorbar(img, ax=axes[1,4])
+
+    # approximated implementation (right side) for a certain R
+    R_list = [1,10,100,1000]
+    K_rights = []
+    for m,R in enumerate(R_list):
+        print(f"R = {R}")
+        K_right = np.zeros((N,N))
+        #transforming X with N samples into Z with R samples
+        #TODO: can the same samples be drawn multiple times?
+        T = X[np.random.choice(np.arange(0,X.shape[0]), R)]
+        sigma = 1
+        Z = np.zeros((N, R))
+        
+        for r in range(R):
+            t = T[r]
+            prod = -np.linalg.norm((X-t),axis=1)**2
+            Z[:, r] = np.sqrt(1 / R) * np.exp(prod/ (2 * sigma**2))
+        
+        K_right = Z @ Z.T
+        K_rights.append(K_right)
+        
+        #plotting
+        img = axes[1,m].imshow(K_right)
+        colorbar = fig.colorbar(img, ax=axes[1,m])
+        
 
     """ End of your code 
     """
