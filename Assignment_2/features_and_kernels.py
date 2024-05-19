@@ -259,16 +259,30 @@ def task2():
             y_pred = y_hat(x_test,theta_gauss,"gauss")
             gauss_test_loss[iter,r] = mse(y,y_pred)
 
-    fourier_training_loss = np.mean(fourier_training_loss,axis = 0)
-    gauss_training_loss = np.mean(gauss_training_loss,axis = 0)
-    ax[0].plot(fourier_training_loss,label="training set")
-    ax[1].plot(gauss_training_loss,label="training set")
+    train_color = [0.1,0.5,0.8]
+    test_color = [0.9,0.1,0.2]
+    alph = 0.3
+    fourier_training_loss_mean = np.mean(fourier_training_loss,axis = 0)
+    gauss_training_loss_mean = np.mean(gauss_training_loss,axis = 0)
+    fourier_training_loss_std = np.std(fourier_training_loss,axis = 0)
+    gauss_training_loss_std = np.std(gauss_training_loss,axis = 0)
+    ax[0].plot(R_list,fourier_training_loss_mean,label="training set",color=train_color)
+    ax[0].fill_between(R_list,fourier_training_loss_mean+fourier_training_loss_std,fourier_training_loss_mean-fourier_training_loss_std,facecolor=train_color,alpha = alph)
+    ax[1].plot(R_list,gauss_training_loss_mean,label="training set",color=train_color)
+    ax[1].fill_between(R_list,gauss_training_loss_mean+gauss_training_loss_std,gauss_training_loss_mean-gauss_training_loss_std,facecolor=train_color,alpha = alph)
 
-    fourier_test_loss = np.mean(fourier_test_loss,axis = 0)
-    gauss_test_loss = np.mean(gauss_test_loss,axis = 0)
-    ax[0].plot(fourier_test_loss,label="test set")
-    ax[1].plot(gauss_test_loss,label="test set")
-
+    fourier_test_loss_mean = np.mean(fourier_test_loss,axis = 0)
+    gauss_test_loss_mean = np.mean(gauss_test_loss,axis = 0)
+    fourier_test_loss_std = np.std(fourier_test_loss,axis = 0)
+    gauss_test_loss_std = np.std(gauss_test_loss,axis = 0)
+    ax[0].plot(R_list,fourier_test_loss_mean,label="test set",color=test_color)
+    ax[0].fill_between(R_list,fourier_test_loss_mean+fourier_test_loss_std,fourier_test_loss_mean-fourier_test_loss_std,facecolor=test_color,alpha = alph)
+    ax[1].plot(R_list,gauss_test_loss_mean,label="test set",color=test_color)
+    ax[1].fill_between(R_list,gauss_test_loss_mean+gauss_test_loss_std,gauss_test_loss_mean-gauss_test_loss_std,facecolor=test_color,alpha = alph)
+    
+    ax[0].grid()
+    ax[1].grid()
+    plt.tight_layout(pad = 1)
 
     """ End of your code 
     """
