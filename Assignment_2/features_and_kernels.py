@@ -180,7 +180,7 @@ def task2():
 
     """ Start of your code 
     """
-    lam = 0.1
+    lam = 0.0001
 
     def z_kernel_fourier(X,R):
         #transforming X with N samples into Z with R samples
@@ -215,10 +215,10 @@ def task2():
             
         else:
             raise NameError(f"'{method}' is not a valid method to calculate the kernel.")
-        term_1 = z @ z.T +lam*np.eye(z.shape[0])
+        term_1 = z.T @ z +lam*np.eye(z.shape[1])
         inv_term_1 = np.linalg.pinv(term_1)
-        term_2 = inv_term_1.T @ z
-        return term_2.T @ np.reshape(y_train,(len(y_train),1))
+        term_2 = z.T @ y_train
+        return inv_term_1 @ term_2
 
     def y_hat(x,theta,method):
         R = theta.shape[0]
@@ -227,12 +227,12 @@ def task2():
 
         elif method == "gauss":
             z =  z_kernel_gauß(x,R)
-        return z.T @ z @ theta
+        return z  @ theta
     
     def mse(y,y_pred):
-        return np.mean(np.power((y-y_pred),2))
+        return 1/len(y)*np.sum(np.power((y-y_pred),2))
 
-    R_list = [1,2,10,20,50,100]
+    R_list = [1, 2, 5, 10, 20, 50,100,1000]
     runs = 5
     #losses for each R and 5 runs
     fourier_training_loss = np.zeros((runs,len(R_list)))
@@ -245,19 +245,19 @@ def task2():
         for r,R in enumerate(R_list):  
             # With random fourier feature transform:
             theta_fourier = theta_star(x,y,lam,"fourier",R)
-            y_pred = y_hat(x,theta_fourier,"fourier")
-            fourier_training_loss[iter,r] = mse(y,y_pred)
+            y_pred_train = y_hat(x,theta_fourier,"fourier")
+            fourier_training_loss[iter,r] = mse(y,y_pred_train)
 
-            y_pred = y_hat(x_test,theta_fourier,"fourier")
-            fourier_test_loss[iter,r] = mse(y,y_pred)
+            y_pred_test = y_hat(x_test,theta_fourier,"fourier")
+            fourier_test_loss[iter,r] = mse(y_test,y_pred_test)
 
             # with random gauss feature transform:
             theta_gauss = theta_star(x,y,lam,"gauss",R)
-            y_pred = y_hat(x,theta_gauss,"gauss")
-            gauss_training_loss[iter,r] = mse(y,y_pred)
+            y_pred_train = y_hat(x,theta_gauss,"gauss")
+            gauss_training_loss[iter,r] = mse(y,y_pred_train)
 
-            y_pred = y_hat(x_test,theta_gauss,"gauss")
-            gauss_test_loss[iter,r] = mse(y,y_pred)
+            y_pred_test = y_hat(x_test,theta_gauss,"gauss")
+            gauss_test_loss[iter,r] = mse(y,y_pred_train)
 
     train_color = [0.1,0.5,0.8]
     test_color = [0.9,0.1,0.2]
@@ -282,7 +282,10 @@ def task2():
     
     ax[0].grid()
     ax[1].grid()
+    plt.legend()
     plt.tight_layout(pad = 1)
+    plt.suptitle(f"Mean squared error, lambda = {lam}",y= 1.05)
+    plt.savefig(f"./Mean squared error, lambda = {lam}.png")
 
     """ End of your code 
     """
