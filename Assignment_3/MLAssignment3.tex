@@ -1,0 +1,221 @@
+\documentclass{article}
+\usepackage[utf8x]{inputenc}
+\usepackage[margin=0.7in]{geometry}
+\usepackage[colorlinks=true, linkcolor=black, citecolor=red]{hyperref}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage{amsmath, amssymb, bm}
+
+\usepackage{array}
+\usepackage[ruled,vlined,noline]{algorithm2e}
+\usepackage{epsfig}
+\usepackage{hyperref} 
+\usepackage{cleveref}
+\usepackage{cite}
+\usepackage{glossaries}
+%\usepackage{natbib}
+\usepackage{makecell}
+\usepackage{tikz}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{xcolor}
+
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\renewcommand\arraystretch{1.8}
+\DeclareOldFontCommand{\rm}{\normalfont\rmfamily}{\mathrm}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\deadline}{\noindent\textbf{Deadline:}\xspace}
+\newcommand{\submission}{\noindent\textbf{Submission:}\xspace}
+\newcommand{\implementation}{\noindent\textbf{Implementation:}\xspace}
+\newcommand{\bonus}[1]{\section*{Bonus: \textnormal{(#1 points)}}}
+\newcommand{\note}{\paragraph*{Note:}}
+\newcommand{\eg}{\emph{e.g.}\xspace}
+\newcommand{\ie}{\emph{i.e.}\xspace}
+\newcommand{\wrt}{\emph{w.r.t.}\xspace}
+\newcommand{\psnr}{\ensuremath{\text{PSNR}}\xspace}
+\newcommand{\mse}{\ensuremath{\text{MSE}}\xspace}
+\newcommand{\task}[2]{\section{#1\hspace{0.3cm}\textnormal{(#2 points)}}}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\sig}{\boldsymbol{\Sigma}}
+\newcommand{\m}{\boldsymbol{\mu}}
+\renewcommand{\vec}[1]{\textbf{#1}}
+
+\title{{\Huge \textbf{Assignment 3}} \\ {\Large \textbf{Machine Learning 2}}}
+\author{Lea Bogensperger, \texttt{lea.bogensperger@icg.tugraz.at}\vspace{-0.4cm} \\ Benedikt Kantz, \texttt{benedikt.kantz@student.tugraz.at}}
+
+\date{June 4, 2024}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+\renewcommand{\vec}[1]{\textbf{#1}}
+\newcommand{\mat}[1]{\textbf{#1}}
+
+\newacronym{em}{EM}{Expectation-Maximization}
+\newacronym{pdf}{pdf}{probability density function}
+\newacronym{gmm}{GMM}{gaussian mixture model}
+\newacronym{dsm}{DSM}{denoising score matching}
+\newacronym{mcmc}{MCMC}{Markov Chain Monte Carlo}
+\newacronym{kde}{KDE}{kernel density estimation}
+\newacronym{mmse}{MMSE}{minimum mean squared error}
+
+\begin{document}
+\maketitle
+
+\vspace{0.5cm}
+\deadline
+June 25, 2024 at 23:55h.
+
+\submission 
+Upload your report (\texttt{report.pdf}), your implementation (\texttt{main.py}) and your figure file (\texttt{figures.pdf}) to the TeachCenter. Please do not zip your files. Use the provided file containing the code framework for your implementation.
+
+\section*{Generative Modeling}
+In this assignment you will work with a generative model to estimate the density $p(\vec x)$ of a data set where you have a access to a finite training data set $\{\vec x_1,\dots, \vec x_S\}_{s=1}^S$ with $\vec x_s \in \mathbb{R}^2$. To achieve this, you will use a popular technique called \gls{dsm} to estimate the score (the gradient of the log) of the underlying data distribution using a small neural network. Then you can use \gls{mcmc} sampling to generate new data samples from the data distribution. 
+
+Note: for the training of your neural network, you can use \texttt{pytorch} in this example to ease the learning process using the provided automatic differentiation. 
+\section{Data Set (2P)}
+Create a data set comprised of $K=3$ Gaussians (i.e. a \gls{gmm}) with weights $\pi_k = (\tfrac 13,\tfrac 13,\tfrac 13)$. You should sample $S=10000$ altogether, i.e. make sure you sample correctly from each Gaussian according to the given proportion. The parameters for the mean vectors are
+\[
+\m_1 = \tfrac 14 (1,1)^T, \quad \m_2 = \tfrac 14  (3,1)^T, \quad \m_3 = \tfrac 14 (2,3)^T,
+\]
+and the covariance matrices are
+\[
+\sig_1 = \sig_2 = \sig_3 = \begin{pmatrix}
+0.01 & 0.0 \\ 0.0 & 0.01\end{pmatrix}
+\]
+
+As a reminder,  our \gls{gmm} has the following form
+\begin{equation}
+p(\vec x) = \prod_{s=1}^S \sum_{k=1}^K \pi_k \mathcal{N}(\vec x_s|\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k), 
+\end{equation}
+where each individual multivariate Gaussian is naturally given by
+\[
+\mathcal{N}(\vec x_s|\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k) = \frac{1}{2\pi |\boldsymbol{\Sigma}_k|^{1/2} } \exp\big (-\tfrac 1 2 (\vec x_s - \boldsymbol{\mu}_k)^T \boldsymbol{\Sigma}_k^{-1} (\vec x_s - \boldsymbol{\mu}_k)\big).
+\]
+
+\paragraph{Tasks}
+\begin{enumerate}
+\item Generate the 2D data as given above and plot them in a 2D histogram using \texttt{matplotlib.pyplot.hist2d} with 128 bins.
+\end{enumerate}
+
+\section{Learning the Data Distribution with Score Matching (5P)}
+Ideally, you would directly try to learn the data distribution $p(\vec x)$ using maximum likelihood learning, where you directly model the \gls{pdf}. To model this, we can use a function $f_\theta$ (a.k.a. neural network) parameterized by learnable parameters $\theta$ that constitute the \gls{pdf} by
+\begin{equation}\label{eq:pdf}
+p_\theta(\vec x) = \frac{e^{-f_\theta(\vec x)}}{Z_\theta},
+\end{equation}
+where $Z_\theta > 0 $ ensures the proper normalization of the \gls{pdf} such that it actually fulfills the properties required for a valid \gls{pdf}. The function $f_\theta (\vec x)$ is often referred to as \textbf{energy-based model}, as it assigns to a configuration $\vec x$ a scalar-valued energy quantity indicating how likely the respective state is. To put it into practical terms for our 2D points, we have
+\begin{equation}\label{eq:ebm}
+f_\theta: \mathbb{R}^2 \to \mathbb{R}.
+\end{equation} 
+In maximum likelihood, we would directly maximize the log. of~\eqref{eq:pdf}, however, an alternative is to model the score function of a distribution
+\begin{equation}\label{eq:score}
+\nabla_{\vec x} \log p(\vec x),
+\end{equation}
+by a model $s_\theta(\vec x)\approx \nabla_{\vec x }\log p(\vec x)$. 
+While direct modeling of this is not straightforward as we do not have access to  $p(\vec x)$ in practice, there are some options to approximate the score of the data distribution, one of them being \gls{dsm}~\cite{song}, which is illustrated in Figure~\ref{fig:dsm}.
+The idea is to perturb the data distribution with Gaussian noise $\vec z \sim \mathcal{N}(\vec 0,\vec I)$ scaled by noise levels $\sigma_1 < \sigma_2 < \dots < \sigma_L$, such that we obtain noisy data samples $\bar{\vec x}$
+\[
+\bar{\vec x} = \vec x + \sigma_i \vec z,
+\]
+i.e. we obtain $p_{\sigma_i} (\bar{\vec x}|\vec x)$. 
+The reason why this is actually helpful is due to Tweedie's formula~\cite{tweedie}, which gives us an estimate for the expectation of a denoised sample $\vec x$ given a noisy sample $\bar{\vec x}$ by
+\begin{equation}
+\label{eq:tweedie}
+\mathbb{E}_{\vec x|\bar{\vec x}} [\vec x] = \bar{\vec x } + \sigma_i^2 \nabla_{\bar{\vec x}} \log p_{\sigma_i} (\bar{\vec x}| \vec x)
+\end{equation}
+
+\begin{figure}[H]
+\begin{center}
+\includegraphics[scale=0.4]{figures/dsm}\caption{Idea of \gls{dsm}. For small noise levels (left), the original data distribution is well approximated, but the scores bear little information in low-density regions. By using a higher noise level (center to right), the scores can be useful to yield a rough estimate of the directions of modes of the data distribution with the tradeoff of a blurred version of the data distribution.}\label{fig:dsm}
+\end{center}
+\end{figure}
+
+Using these insights, we can finally estimate the score of the perturbed data distribution 
+\begin{equation}\label{eq:obj}
+\arg \min_\theta \tfrac 1 S\sum_{s=1}^S \sigma_i^2 \mathbb{E}_{p_{\sigma_i} (\bar{\vec x}|\vec x_s)} \big [\Vert \nabla_{\bar{\vec x}} \log p_{\sigma_i}(\bar{ \vec x}|\vec x_s) -  s_\theta (\bar{\vec x}, \sigma_i) \Vert_2^2 \big ],
+\end{equation}
+where \textit{for each} data sample $\vec x_s$ we sample a random noise level $\sigma_i \in \{\sigma_1,\dots,  \sigma_L\}$. 
+
+Note that we therefore have to feed the additional information of the noise level $\sigma_i$ into the score network $s_\theta (\bar{\vec x}, \sigma_i)$ or the energy-based network $f_\theta (\bar{\vec x}, \sigma_i)$ , respectively, such that we can train the network to denoise our sample $\bar{\vec x}$ based on the current noise level $\sigma_i$. 
+
+\paragraph{Tasks}
+\begin{enumerate}
+\item Try to think of a reason why direct optimization via maximum-likelihood learning in~\eqref{eq:pdf} might be difficult to achieve in practice. 
+\item Compute the score (the gradient of the log) as given in~\eqref{eq:score} of the sought \gls{pdf} in~\eqref{eq:pdf}. You should reach a form where the score depends only on the energy-based neural network $f_\theta(\vec x)$. Relate the obtained result to your discussion in the previous point. 
+\item Rewrite~\eqref{eq:obj} in its final form using Tweedie's estimator from~\eqref{eq:tweedie} and your computed score in the form of the energy-based neural network $f_\theta$.  %(\vec x)
+\end{enumerate}
+
+\section{Denoising Score Matching in Practice (14P)}
+Your task is now to implement the above idea in practice. This means that you should implement a simple feedforward neural network composed of only linear layers and activation functions that are twice differentiable (e.g. you can use the exponential linear unit function \texttt{elu} here). Further, you have to ensure that you condition your network on the current noise level that was used to generate the noisy data, by stacking it with the 2D input point, i.e. $(\bar{\vec x}_s, \sigma_i)^T$. 
+Thus, your network will map as follows (compare~\eqref{eq:ebm}, where the noise level condition is not yet included): 
+\[
+f_\theta: \R^3 \to \R. 
+\]
+
+
+This network should then be trained such that you can estimate the scores of the noisy data distribution. Therefore, as we are using \gls{dsm}, your task is to decide for a minimum and a maximum noise level, where it is important to ensure that $p_{\sigma_{1}}(\bar{ \vec x}|\vec x)\approx p(\vec x)$ and $p_{\sigma_{L}}(\bar{ \vec x}|\vec x)\approx \mathcal{N}(\vec 0, \vec I)$ 
+
+\paragraph{Tasks}
+\begin{enumerate}
+\item Experiment with different noise levels $\sigma_i$ to perturb your data distribution. Choose $\sigma_{1}$ and $\sigma_{L}$ and give an intuition on your choice. Choose a number of noise scales $L$ (state it) and interpolate all $L$ noise scales from $[\sigma_1,\sigma_L]$ geometrically (this function is provided in the code for you). 
+
+Plot the perturbed data distributions $p_{\sigma_{1}}(\bar{ \vec x}|\vec x)$ and $p_{\sigma_{L}}(\bar{ \vec x}|\vec x)$ along with your original data samples again using \texttt{matplotlib.pyplot.hist2d}. 
+\item Decide for a very small and simple network architecture and implement it. State the number of learnable parameters of the neural network in your report. Why do your activation functions need to be twice differentiable?
+\item Choose a number of iterations, a learning rate and select a suitable optimizer which is implemented readily in \texttt{pytorch} -- state your choices in the report. Train your network by sampling random noise levels $\sigma_i$ for each data point in each iteration by minimizing~\eqref{eq:obj}. Plot the loss function. 
+\item Analytically compute the scores of the \gls{gmm} and implement it in your code. 
+Choose $\sigma_1$, $\sigma_L$ and an intermediate noise level and plot the density function and the scores for the 3 noise levels over the discretized data range in 2D. Use the magnitude of the scores to denote their color when plotting them (i.e. it should look similar to Figure~\ref{fig:dsm}). 
+If you perturb a Gaussian with a noise level of $\sigma_i$, you can simply adapt its covariance matrix accordingly:
+\[
+\begin{pmatrix}
+\Sigma_{11} + \sigma_i^2 & \Sigma_{12} \\ \Sigma_{21} & \Sigma_{22} + \sigma_i^2
+\end{pmatrix}
+\]
+\item Additionally, check whether your learned energy-based model makes sense wrt. its analytic counterpart. Therefore, evaluate the energy for your discretized data range and compute the (unnormalized) density from it (state how to get the unnormalized density from the energy). Moreover, compute the scores. Compare it to the plot of the analytic density function and the scores. Discuss your findings and in what way they might differ. 
+\end{enumerate}
+
+\paragraph{Implementation Details}
+\begin{enumerate}
+\item To obtain the gradient of a scalar-valued energy function such as $\nabla_{\vec x} f_\theta$ in \texttt{pytorch}, you can use \texttt{torch.autograd.grad} to rely on automatic differentiation.
+\item See the provided toy example on how to update a neural network's parameters conveniently in \texttt{pytorch}. 
+\item The \texttt{Adam} optimizer could be a good choice for learning the network parameters.
+\item To plot the density/scores, generate a 2D grid using \texttt{numpy.meshgrid} where you evaluate the quantities of interest for each point of the grid.
+\item You can plot a vector field using \texttt{matplotlib.pyplot.quiver}. Use \texttt{numpy.hypot} to color the scores when creating a \texttt{quiver} plot. 
+\end{enumerate}
+\section{Sampling from the Learned Distribution (4P)}
+Now that you have a trained score network, you can use it to sample from the data distribution with Langevin dynamics in the form of 
+\[
+\bar{\vec x}_t = \bar{\vec x}_{t-1} + \frac{\tau}{2} \nabla_{\vec x} \log p(\vec x_{t-1}) + \sqrt{\tau}\vec z_{t-1},
+\]
+where $\tau \in \R$ is a small step size. Here is why we can equally use score matching to learn the score instead of learning the density $p(\vec x)$ directly: for Langevin dynamics we only require access to the score. In order to deal with the different noise levels, we use annealed Langevin~\cite{song} as shown in Algorithm~\ref{alg:ald}. 
+
+\begin{algorithm}[htb]
+Set $\epsilon$, number of Langevin steps $T$ per noise level, use $\{\sigma_i\}_{i=1}^L$ \\
+Initialize $\bar{\vec x}_0$ \\
+\For{$i \leftarrow L, \dots, 1$}
+{
+$\alpha_i \leftarrow \varepsilon \cdot  \sigma_i^2/\sigma_1^2$ \\
+\For{$t\leftarrow 1, \dots, T$}{
+$\vec z_t \sim \mathcal{N}(\vec 0, \vec I)$\\
+$\bar{\vec x}_t \leftarrow \bar{\vec x}_{t-1} - \frac{\alpha_i}{2} \nabla_{{\vec x}} f_\theta (\bar{\vec x}_{t-1} , \sigma_i)+  \sqrt{\alpha_i} \vec z_t$\\
+}
+$\bar{\vec x}_0 = \bar{\vec x}_T$\\
+}
+Return $\bar{\vec x}_T$\\
+\caption{Annealed Langevin sampling algorithm.}\label{alg:ald}
+\end{algorithm}
+
+
+\paragraph{Tasks}
+\begin{enumerate}
+\item Choose the hyperparameters $\varepsilon$ and $T$ in Algorithm~\ref{alg:ald} and implement it. 
+\item Generate 5000 samples and plot a 2D histogram using \texttt{matplotlib.pyplot.hist2d} and compare it with the one from the original data samples. 
+\end{enumerate}
+
+\begin{thebibliography}{99}
+\bibitem{song}
+Song, Y., \& Ermon, S. (2019). Generative modeling by estimating gradients of the data distribution. Advances in neural information processing systems, 32.
+\bibitem{tweedie}
+Efron, B. (2011). Tweedie’s formula and selection bias. Journal of the American Statistical Association, 106(496), 1602-1614.
+\end{thebibliography}
+\end{document}
