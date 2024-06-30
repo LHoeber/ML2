@@ -199,8 +199,8 @@ def dsm(x, params):
 
 
     #3. Training the neural network
-    num_iterations =500
-    learning_rate = 0.05
+    num_iterations =10
+    learning_rate = 0.01
     adam = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
     losses = []
 
@@ -235,73 +235,69 @@ def dsm(x, params):
     ax3.set_xlabel('iterations')
     ax3.set_ylabel('loss')
     ax3.set_title(f'MSE with final loss: {losses[-1]}')
-    plt.show()
+    #plt.show()
 
 
     #4. computing the score and plotting it
-    def score_gmm(mu, sigma, x):
+    def GMM_scores(mu, sigma, x):
         sigma_inv = np.linalg.inv(sigma.numpy())
-        
-        return -np.dot(sigma_inv, x - mu.numpy())
+        return -sigma_inv @ (x-mu.numpy())
 
-    # calculate GMM density
-    def density_gmm(mu, sigma, x):
-        dims = len(mu)
-        sigma_det = np.linalg.det(sigma)
-        norm = 1.0 / (np.power((2 * np.pi), float(dims) / 2) * np.sqrt(sigma_det))
-        sigma_inv = np.linalg.inv(sigma)
-
+    # function for probability for GMM with equal weights
+    def GMM(mu, sigma, x):
         mu = mu.numpy()
         sigma = sigma.numpy()
 
-        result = np.exp(-0.5 * np.dot((x - mu).T, np.dot(sigma_inv, x - mu)))
-        return norm * result
+        D = mu.shape[0]
+        factor = 1.0 / (np.power((2 * np.pi), float(D) / 2)*np.sqrt(np.linalg.det(sigma)))
+        sigma_inverse = np.linalg.inv(sigma)
+
+        result = np.exp(-0.5 * ((x - mu).T @ sigma_inverse @ (x - mu)))
+        return factor * result
 
     # plot (same style as example)
-    def plot_gmm_scores(x, mu, sigma, chosen_sigmas, grid_size=32):
+    def GMM_scores_plot(x, mu, sigma, chosen_sigmas, res=32):
         # center grid
-        x_min, x_max = x[:, 0].min(), x[:, 0].max()
-        y_min, y_max = x[:, 1].min(), x[:, 1].max()
-        x_mg, y_mg = np.meshgrid(np.linspace(x_min, x_max, grid_size), np.linspace(y_min, y_max, grid_size))
+        xlims = (min(x[:, 0]), max(x[:, 0]))
+        ylims = (min(x[:, 1]), max(x[:, 1]))
+        X, Y = np.meshgrid(np.linspace(xlims[0],xlims[1], res), np.linspace(ylims[0],ylims[1], res))
 
         for i, noiselevel in enumerate(chosen_sigmas):
             # save density and noise per level
-            density = np.zeros((grid_size, grid_size))
-            scores = np.zeros((grid_size, grid_size, 2))
+            density = np.zeros((res, res))
+            scores = np.zeros((res, res, 2))
             
             for m, sig in zip(mu, sigma):
                 sigma_n = sig + torch.eye(2) * noiselevel**2
-                for j in range(grid_size):
-                    for k in range(grid_size):
-                        p = np.array([x_mg[j, k], y_mg[j, k]])
-                        density_p = density_gmm(m, sigma_n, p)
+                for j in range(res):
+                    for k in range(res):
+                        p = np.array([X[j, k], Y[j, k]])
+                        density_p = GMM(m, sigma_n, p)
                         density[j, k] += density_p
-                        scores[j, k] += score_gmm(m, sigma_n, p) * density_p
+                        scores[j, k] += GMM_scores(m, sigma_n, p) * density_p
 
             # plot 
             ax_density = ax4[0, i]
-            ax_density.contourf(x_mg, y_mg, density, levels=100)
+            ax_density.contourf(X, Y, density, levels=100)
             ax_scores = ax4[1, i]
-            ax_scores.quiver(x_mg, y_mg, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
+            ax_scores.quiver(X, Y, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
 
-
-    plot_gmm_scores(x, mu, sig, chosen_sigmas)
-    print("3.4) DONE: plot_gmm_scores")
-
+    chosen_sigmas = [sigma_list[0],sigma_list[int(len(sigma_list)/2)], sigma_list[-1]]
+    GMM_scores_plot(x, mu, sig, chosen_sigmas, 32)
 
 
     # -----   Task 3.5 -----
     # energy vs scores
-    def eval_energy(model, x, chosen_sigmas, grid_size=32):
+    def eval_energy(model, x, chosen_sigmas, res = 32):
         x_min, x_max = x[:, 0].min(), x[:, 0].max()
         y_min, y_max = x[:, 1].min(), x[:, 1].max()
-        x_mg, y_mg = np.meshgrid(np.linspace(x_min, x_max, grid_size), np.linspace(y_min, y_max, grid_size))
-        x_tensor = torch.tensor(x_mg.reshape(-1, 1), dtype=torch.float32)
-        y_tensor = torch.tensor(y_mg.reshape(-1, 1), dtype=torch.float32)
+        X, Y = np.meshgrid(np.linspace(x_min, x_max, res), np.linspace(y_min, y_max, res))
+        x_tensor = torch.tensor(X.reshape(-1, 1), dtype=torch.float32)
+        y_tensor = torch.tensor(Y.reshape(-1, 1), dtype=torch.float32)
 
         # save energy and scors
-        energy = np.zeros((grid_size, grid_size))
-        scores = np.zeros((grid_size, grid_size, 2))
+        energy = np.zeros((res, res))
+        scores = np.zeros((res, res, 2))
 
         for n, noiselevel in enumerate(chosen_sigmas):
             # create noise tensor
@@ -310,26 +306,26 @@ def dsm(x, params):
             input.requires_grad_(True)
 
             # bw pass
-            output = model(input).reshape(grid_size, grid_size)
+            output = model(input).reshape(res, res)
             energy[:, :] = output.detach().numpy()
-            res = model(input)
-            res.backward(torch.ones_like(res))
+            result = model(input)
+            result.backward(torch.ones_like(result))
 
             # score
-            x_scores = input.grad[:, 0].reshape(grid_size, grid_size)
-            y_scores = input.grad[:, 1].reshape(grid_size, grid_size)
+            x_scores = input.grad[:, 0].reshape(res, res)
+            y_scores = input.grad[:, 1].reshape(res, res)
             scores[:, :, 0] = x_scores.detach().numpy()
             scores[:, :, 1] = y_scores.detach().numpy()
 
             # plot
             ax5_energy = ax5[0, n]
             ax5_scores = ax5[1, n]
-            ax5_energy.contourf(x_mg, y_mg, energy, levels=100)
-            ax5_scores.quiver(x_mg, y_mg, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
+            ax5_energy.contourf(X, Y, energy, levels=100)
+            ax5_scores.quiver(X, Y, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
 
         return energy, scores
 
-    energy, scores = eval_energy(Simple_NN, x, chosen_sigmas)
+    energy, scores = eval_energy(Simple_NN, x, chosen_sigmas,32)
     print("3.5) DONE: eval_energy (and plotted)")
     """ End of your code
     """
