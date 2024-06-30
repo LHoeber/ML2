@@ -94,17 +94,17 @@ def generate_data(n_samples):
         # Sampling from component
         x[i, :] = sample_GMM(mu[k], sig[k])
 
-    # bins = 128
-    # # Plotting all the random samples
-    # plt.hist2d(x[:,0], x[:,1], bins=bins, cmap='viridis')
-    # plt.colorbar(label='number of samples')
-    # plt.xlabel('X')
-    # plt.ylabel('Y')
-    # plt.title('2D Histogram for randomly generated samples')
-    # plt.axis("equal")
-    # plt.tight_layout()
-    # if SHOW_PLOTS:
-    #     plt.show()
+    bins = 128
+    # Plotting all the random samples
+    plt.hist2d(x[:,0], x[:,1], bins=bins, cmap='viridis')
+    plt.colorbar(label='number of samples')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('2D Histogram for randomly generated samples')
+    plt.axis("equal")
+    plt.tight_layout()
+    if SHOW_PLOTS:
+        fig1.show()
     
 
     """ End of your code
@@ -165,7 +165,6 @@ def dsm(x, params):
     sigma_list = get_sigmas(sigma_1, sigma_L, L)
     chosen_sigmas = [0,sigma_list[0], sigma_list[-1]]
 
-
     #Plotting original dist, dist with sigma_1, dist with sigma_L 
     bins = 128
     for i,sigma in enumerate([0,sigma_1,sigma_L]):
@@ -187,9 +186,9 @@ def dsm(x, params):
             self.elu = nn.ELU()
         
         def forward(self, input):
-            tmp = F.elu(self.W1(input))
-            tmp = F.elu(self.W2(tmp))
-            tmp = F.elu(self.W3(tmp))
+            tmp = self.elu(self.W1(input))
+            tmp = self.elu(self.W2(tmp))
+            tmp = self.elu(self.W3(tmp))
             return self.W4(tmp)
         
     Simple_NN = SimpleMLP(3,128,1)
@@ -199,59 +198,51 @@ def dsm(x, params):
     print("Number of learnable parameters: ", num_params)
 
 
-    # -----  Task 3.3   -----
-    # init params
-    num_iterations = 800
-    learning_rate = 0.005
-    adam_optimizer = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
-    losses_save = []
+    #3. Training the neural network
+    num_iterations =500
+    learning_rate = 0.05
+    adam = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
+    losses = []
 
-    for iteration in range(num_iterations):
-        adam_optimizer.zero_grad()
+    for i in range(num_iterations):
+        # add a random noise level to each data sample, to make input 3-dimensional
+        sigma_indices = np.random.randint(0, L, x.shape[0])
+        sigma_vals = torch.tensor([sigma_list[idx] for idx in sigma_indices])
+        sigma_vals = sigma_vals.reshape((x.shape[0],1)).float()
 
-        # sample rand noise
-        idx_sigma = np.random.randint(0, L, size=x.shape[0])
-        sigma = torch.tensor(sigma_list[idx_sigma]).float().view(-1, 1).clone().detach()
-        noise = sigma * torch.randn_like(x)
-        x_perturbed = x + noise
-        input_data = torch.cat((x_perturbed, sigma), dim=1)
+        #do all the sampling points in each iteration need to get same noise level
+        #or does the level need to get chosen for ever point separately?
+        x_sigma = x + sigma_vals * torch.randn(x.shape)
+        input_samples = torch.cat((x_sigma, sigma_vals), dim=1)
 
         # forwards pass
-        out = Simple_NN(input_data)
-
-        # calclate loss
-        score = -out.squeeze()
-        score_target = -(x_perturbed - x).norm(dim=1) / (sigma.squeeze() ** 2) 
-        loss = nn.MSELoss()(score, score_target)
+        score_estimate = Simple_NN.forward(input_samples).squeeze()
+        score_target = -(x_sigma - x).norm(dim=1)/sigma_vals.squeeze()**2
+        #loss = F.binary_cross_entropy(torch.sigmoid(score_estimate), F.one_hot(score_target.long()).float()) # ((prediction - y_train)**2).mean()
+        # calculate loss
+        loss = nn.MSELoss()(score_estimate, score_target)
 
         # backwards pass and optimization
+        adam.zero_grad()
         loss.backward()
-        adam_optimizer.step()
+        adam.step()
 
-        losses_save.append(loss.item())
-        print(f"iteration: {iteration}/{num_iterations} | loss: {loss}")
+        losses.append(loss.item())
+        print(f"Training iteration: {i} of {num_iterations}")
 
-    # plot
-    ax3.plot(losses_save)
-    ax3.set_xlabel('Iterations')
-    ax3.set_ylabel('Loss')
-    print("3.3) DONE: trained and loss plotted")
+    # ploting
+    ax3.plot(losses)
+    ax3.set_xlabel('iterations')
+    ax3.set_ylabel('loss')
+    ax3.set_title(f'MSE with final loss: {losses[-1]}')
+    plt.show()
 
 
-
-    # -----   Task 3.4 -----
-    # calculate GMM score
+    #4. computing the score and plotting it
     def score_gmm(mu, sigma, x):
-        sigma_inv = np.linalg.inv(sigma)
+        sigma_inv = np.linalg.inv(sigma.numpy())
         
-        # check types
-        if isinstance(mu, torch.Tensor):
-            mu = mu.numpy()
-        if isinstance(sigma, torch.Tensor):
-            sigma = sigma.numpy()
-        if isinstance(x, torch.Tensor):
-            x = x.numpy()
-        return -np.dot(sigma_inv, x - mu)
+        return -np.dot(sigma_inv, x - mu.numpy())
 
     # calculate GMM density
     def density_gmm(mu, sigma, x):
@@ -260,13 +251,8 @@ def dsm(x, params):
         norm = 1.0 / (np.power((2 * np.pi), float(dims) / 2) * np.sqrt(sigma_det))
         sigma_inv = np.linalg.inv(sigma)
 
-        # check types
-        if isinstance(mu, torch.Tensor):
-            mu = mu.numpy()
-        if isinstance(sigma, torch.Tensor):
-            sigma = sigma.numpy()
-        if isinstance(x, torch.Tensor):
-            x = x.numpy()
+        mu = mu.numpy()
+        sigma = sigma.numpy()
 
         result = np.exp(-0.5 * np.dot((x - mu).T, np.dot(sigma_inv, x - mu)))
         return norm * result
@@ -378,8 +364,26 @@ def sampling(Simple_NN, sigma_list, n_samples):
 
     """ Start of your code
     """
-   
-        
+    eps = 0.1 #step size adjustment across noise levels
+    T =  50     #number of Langevin samples per noise level
+    x0 = torch.randn((n_samples, 2))   #initial sample
+    x = x0.clone()
+
+    for i in range(len(sigma_list)-1,-1,-1):
+        sigma = sigma_list[i].float()
+        alpha = eps*sigma**2/sigma_list[0].float()**2
+        for t in range(T):
+            z = torch.randn_like(x)
+            x.requires_grad_(True)
+            score = Simple_NN(torch.cat((x, sigma.expand(n_samples, 1)), dim=1)).detach()
+            x = x - (alpha / 2) * score + torch.sqrt(alpha) * z
+    #plotting
+    bins = 128
+    #].hist2d(x0[:,0].cpu().numpy(), x0[:,1].cpu().numpy(), bins=bins, cmap='viridis')
+    #ax6[1].hist2d(x[:,0].cpu().numpy(), x[:,1].cpu().numpy(), bins=bins, cmap='viridis')
+    #ax6[0].set_title('Initial samples (standard normal)')
+    #ax6[1].set_title('Generated samples using Langevin dynamics')
+    
 
     """ End of your code
     """
