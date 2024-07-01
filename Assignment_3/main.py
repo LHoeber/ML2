@@ -63,21 +63,7 @@ def generate_data(n_samples):
     a = 1/3*torch.ones(K)
 
     #1.) generating data for interval [0,4] in both dimensions
-    '''x_lims = [0,1]
-    y_lims = [0,1]
-
-    #uniformly drawing sample points in both directions and
-    x = np.random.uniform(low=x_lims[0], high=x_lims[1], size=(S, 2))
-    rand_probs = [GMM(x[s,:],a,mu,sig) for s in range(0,S)]
-
-    bins = 128
-    # Plot the 2D histogram
-    plt.hist2d(x[:,0], x[:,1], bins=bins, weights=rand_probs, cmap='inferno')
-    plt.colorbar(label='Probability Density')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title('2D Histogram with Probabilities')
-    plt.show()'''
+   
 
     def sample_GMM(mu, sigma):
         L = torch.cholesky(sigma)  # for more efficiency bzw. because we need sqrt
@@ -199,10 +185,12 @@ def dsm(x, params):
 
 
     #3. Training the neural network
-    num_iterations =10
+    num_iterations =500
     learning_rate = 0.01
     adam = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
     losses = []
+
+    
 
     for i in range(num_iterations):
         # add a random noise level to each data sample, to make input 3-dimensional
@@ -217,7 +205,13 @@ def dsm(x, params):
 
         # forwards pass
         score_estimate = Simple_NN.forward(input_samples).squeeze()
+        #TODO: am i supposed to use autograd for this instead?
+
         score_target = -(x_sigma - x).norm(dim=1)/sigma_vals.squeeze()**2
+        #score_target = - np.dot(np.linalg.inv(sig),(x - mu))
+
+        x_sigma.requires_grad_(True)  # Enable gradients for input data
+        #score_target = -torch.autograd.grad(outputs=score_estimate, inputs=x_sigma)[0]
         #loss = F.binary_cross_entropy(torch.sigmoid(score_estimate), F.one_hot(score_target.long()).float()) # ((prediction - y_train)**2).mean()
         # calculate loss
         loss = nn.MSELoss()(score_estimate, score_target)
@@ -239,51 +233,132 @@ def dsm(x, params):
 
 
     #4. computing the score and plotting it
-    def GMM_scores(mu, sigma, x):
-        sigma_inv = np.linalg.inv(sigma.numpy())
-        return -sigma_inv @ (x-mu.numpy())
 
-    # function for probability for GMM with equal weights
-    def GMM(mu, sigma, x):
-        mu = mu.numpy()
-        sigma = sigma.numpy()
+    #helper to convert to numpy array
+    def torch2num(x):
+        if isinstance(x, torch.Tensor):
+            return x.numpy()
+        else:
+            return x
+       
 
-        D = mu.shape[0]
-        factor = 1.0 / (np.power((2 * np.pi), float(D) / 2)*np.sqrt(np.linalg.det(sigma)))
-        sigma_inverse = np.linalg.inv(sigma)
+    # function for analytically derived score
+    def GMM_score(mu, sig, x):
+        
+        mu = torch2num(mu)
+        sig = torch2num(sig)
+        x = torch2num(x)
 
-        result = np.exp(-0.5 * ((x - mu).T @ sigma_inverse @ (x - mu)))
-        return factor * result
+        sigma_inv = np.linalg.inv(sig)
+
+        return - np.dot(sigma_inv,(x - mu))
+    
+    # function for probability with multivariate gaussian
+    def multivar_Gauss_pdf(mu, sig, x):
+        D = len(mu)
+        sig_det = np.linalg.det(sig)
+        factor = np.power((2 * np.pi), float(D) / 2) * np.sqrt(sig_det)
+        sig_inv = np.linalg.inv(sig)
+
+        # check types
+        if isinstance(mu, torch.Tensor):
+            mu = mu.numpy()
+        if isinstance(sig, torch.Tensor):
+            sig = sig.numpy()
+        if isinstance(x, torch.Tensor):
+            x = x.numpy()
+
+        exponent = -0.5 * np.dot((x - mu).T, np.dot(sig_inv, x - mu))
+        return 1/factor * np.exp(exponent)
 
     # plot (same style as example)
-    def GMM_scores_plot(x, mu, sigma, chosen_sigmas, res=32):
+   
+
+    def GMM_scores_plot_and_calculate(x, mus, sigmas, chosen_noise_levels, res=32):
         # center grid
         xlims = (min(x[:, 0]), max(x[:, 0]))
         ylims = (min(x[:, 1]), max(x[:, 1]))
         X, Y = np.meshgrid(np.linspace(xlims[0],xlims[1], res), np.linspace(ylims[0],ylims[1], res))
+        data = np.stack([X, Y], axis=-1)
+        
+        scores_with_noise = []
 
+        #calculate all components of GMM for every noise level
+        for l, noise_l in enumerate(chosen_noise_levels):
+            noise_l = torch2num(noise_l)
+            pdf_vals = np.zeros((res, res))
+            scores_all_components = np.zeros((res, res, 2))
+
+            #iteration over gauss components
+            for mu, sig in zip(mus, sigmas):
+                sig=torch2num(sig)
+                mu =torch2num(mu)
+                sig_noise = sig + np.eye(2) * noise_l**2
+                for m in range(res):
+                    for n in range(res):
+                        point = data[m,n,:]
+                        #probability of the point, given our GMM(for one component)
+                        amplitude = multivar_Gauss_pdf(mu, sig_noise, point)
+                        pdf_vals[m, n] += amplitude
+                        #score(normalized to 1, so it only shows direction?) weighted with the pdf
+                        scores_all_components[m, n,:] += GMM_score(mu, sig_noise, point) * amplitude
+            
+            scores_with_noise.append(scores_all_components)
+
+            #plotting
+            ax4[0, l].contourf(X, Y, pdf_vals, levels=100)
+            color_map = np.linalg.norm(scores_all_components,axis = 2)
+            ax4[1, l].quiver(X, Y, scores_all_components[:, :, 0], scores_all_components[:, :, 1], color_map)
+            
+
+        
+        '''
+                sig_k = sig_k + torch.eye(2) * noise_l**2
+                normal_part = Gaussian(data,mu_k,sig_k)
+                inner_deriv = ((mu_k-data)@np.linalg.inv(sig_k))
+                new_component = np.multiply(normal_part[:, np.newaxis], inner_deriv.numpy())
+
+                new_component = new_component.reshape((res,res))
+                denominator = denominator + new_component
+            
+                enumerator = np.random.normal(x,mu_k.numpy(),sig_k.numpy())*((mu_k-x)@np.linalg.inv(sig_k))
+               
+            score_all_components = enumerator/denominator
+            scores_with_noise.append(score_all_components)
+ 
+        #getting colors of the arrows:
+        #TODO: take GMM results for this(with noise(same as already donee for 2))
+        for l,(score,noise_level) in enumerate(zip(scores_with_noise,sigma_list)):
+            x_sigma = x + noise_level * torch.randn(x.shape)
+
+            # plotting
+            ax4[0, i].contourf(X, Y, x_sigma, levels=100)
+            ax4[1, i].quiver(X, Y, score[l][:, :, 0], score[l][:, :, 1])#, np.hypot(scores[:, :, 0], scores[:, :, 1]))
+        '''
+        '''
         for i, noiselevel in enumerate(chosen_sigmas):
-            # save density and noise per level
+            #density = amplitude/color of the arrows
             density = np.zeros((res, res))
             scores = np.zeros((res, res, 2))
             
             for m, sig in zip(mu, sigma):
-                sigma_n = sig + torch.eye(2) * noiselevel**2
+                disturbed_sig = sig + torch.eye(2) * noiselevel**2
                 for j in range(res):
                     for k in range(res):
-                        p = np.array([X[j, k], Y[j, k]])
-                        density_p = GMM(m, sigma_n, p)
-                        density[j, k] += density_p
-                        scores[j, k] += GMM_scores(m, sigma_n, p) * density_p
+                    #     p = np.array([X[j, k], Y[j, k]])
+                    #     density_p = GMM(m, disturbed_sig, p)
+                    #     density[j, k] += density_p
+                        scores[j, k] += GMM_scores(m, disturbed_sig, p) * density_p
 
             # plot 
             ax_density = ax4[0, i]
             ax_density.contourf(X, Y, density, levels=100)
             ax_scores = ax4[1, i]
             ax_scores.quiver(X, Y, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
-
+    
+        '''
     chosen_sigmas = [sigma_list[0],sigma_list[int(len(sigma_list)/2)], sigma_list[-1]]
-    GMM_scores_plot(x, mu, sig, chosen_sigmas, 32)
+    GMM_scores_plot_and_calculate(x, mu, sig, chosen_sigmas, 32)
 
 
     # -----   Task 3.5 -----
@@ -361,24 +436,44 @@ def sampling(Simple_NN, sigma_list, n_samples):
     """ Start of your code
     """
     eps = 0.1 #step size adjustment across noise levels
-    T =  50     #number of Langevin samples per noise level
-    x0 = torch.randn((n_samples, 2))   #initial sample
-    x = x0.clone()
+    T =  100     #number of Langevin samples per noise level
+    S = n_samples
+
+    #generating the initial samples:
+    #TODO: from which distribution should the samples be taken?
+    #the perturbed GMM, or simple standard normal dist?
+    x0 = torch.randn(5000, 2)
+
+    
+    # sigma_indices = np.random.randint(0, L, x.shape[0])
+    # sigma_vals = torch.tensor([sigma_list[idx] for idx in sigma_indices])
+    # sigma_vals = sigma_vals.reshape((x.shape[0],1)).float()
+
 
     for i in range(len(sigma_list)-1,-1,-1):
+        sigma_i = sigma_list[i].float()
+        sigma_vals = torch.ones((x0.shape[0],1))*(sigma_i).float()#.view(-1, 1).clone().detach()
+        print(x0.shape[0])
+        #sigma_vals = sigma_vals.reshape((x0.shape[0],1)).float()
+
+        x = x0.clone()
+        x = torch.cat((x, sigma_vals), dim=1)
+        
+
         sigma = sigma_list[i].float()
         alpha = eps*sigma**2/sigma_list[0].float()**2
         for t in range(T):
             z = torch.randn_like(x)
             x.requires_grad_(True)
-            score = Simple_NN(torch.cat((x, sigma.expand(n_samples, 1)), dim=1)).detach()
+            score = Simple_NN(x).detach()
             x = x - (alpha / 2) * score + torch.sqrt(alpha) * z
     #plotting
+    print("langevin complete")
     bins = 128
-    #].hist2d(x0[:,0].cpu().numpy(), x0[:,1].cpu().numpy(), bins=bins, cmap='viridis')
-    #ax6[1].hist2d(x[:,0].cpu().numpy(), x[:,1].cpu().numpy(), bins=bins, cmap='viridis')
-    #ax6[0].set_title('Initial samples (standard normal)')
-    #ax6[1].set_title('Generated samples using Langevin dynamics')
+    ax6[0].hist2d(x0[:,0].detach().cpu().numpy(), x0[:,1].detach().cpu().numpy(), bins=bins, cmap='viridis')
+    ax6[1].hist2d(x[:,0].detach().cpu().numpy(), x[:,1].detach().cpu().numpy(), bins=bins, cmap='viridis')
+    ax6[0].set_title('Initial samples (standard normal)')
+    ax6[1].set_title('Generated samples using Langevin dynamics')
     
 
     """ End of your code

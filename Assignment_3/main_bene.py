@@ -134,7 +134,7 @@ def dsm(x, params):
 
     # -----  Task 3.3   -----
     # init params
-    num_iterations = 800
+    num_iterations = 50
     learning_rate = 0.005
     adam_optimizer = optim.Adam(Net.parameters(), lr=learning_rate)
     losses_save = []
