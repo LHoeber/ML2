@@ -146,8 +146,8 @@ def dsm(x, params):
     #3 Denoising score matching in practice
     #1. Data distribution with different noise levels
     sigma_1 = 0.1
-    sigma_L = 0.8
-    L = 10
+    sigma_L = 0.6
+    L = 6
     sigma_list = get_sigmas(sigma_1, sigma_L, L)
     chosen_sigmas = [0,sigma_list[0], sigma_list[-1]]
 
@@ -205,22 +205,6 @@ def dsm(x, params):
         
         #input_samples.requires_grad_(True)
 
-        '''sig_tensor = torch.full((x_tensor.size(0), 1), noiselevel, dtype=torch.float32)
-            input = torch.cat((x_tensor, y_tensor, sig_tensor), dim=1)
-            input.requires_grad_(True)
-
-            # bw pass
-            output = Simple_NN(input).reshape(res, res)
-            energy[:, :] = output.detach().numpy()
-            result = Simple_NN(input)
-            result.backward(torch.ones_like(result))
-
-            # scores
-            x_scores = input.grad[:, 0].reshape(res, res)
-            y_scores = input.grad[:, 1].reshape(res, res)
-            scores[:, :, 0] = x_scores.detach().numpy()
-            scores[:, :, 1] = y_scores.detach().numpy()'''
-
         # forwards pass
         output_NN = Simple_NN.forward(input_samples)
         #TODO: am i supposed to use autograd here
@@ -267,7 +251,7 @@ def dsm(x, params):
 
         sigma_inv = np.linalg.inv(sig)
 
-        
+
 
         return - np.dot(sigma_inv,(x - mu))
     
@@ -289,10 +273,26 @@ def dsm(x, params):
         exponent = -0.5 * np.dot((x - mu).T, np.dot(sig_inv, x - mu))
         return 1/factor * np.exp(exponent)
 
-    # plot (same style as example)
-   
+    def deriv_multivar_Gauss_pdf(mu, sig, x):
+        D = len(mu)
+        sig_det = np.linalg.det(sig)
+        factor = np.power((2 * np.pi), float(D) / 2) * np.sqrt(sig_det)
+        sig_inv = np.linalg.inv(sig)
 
-    def GMM_scores_plot_and_calculate(x, mus, sigmas, chosen_noise_levels, res=32):
+        # check types
+        if isinstance(mu, torch.Tensor):
+            mu = mu.numpy()
+        if isinstance(sig, torch.Tensor):
+            sig = sig.numpy()
+        if isinstance(x, torch.Tensor):
+            x = x.numpy()
+
+        exponent = -0.5 * np.dot((x - mu).T, np.dot(sig_inv, x - mu))
+        return 1/factor * np.exp(exponent)*np.dot(sig_inv,(x-mu))
+
+    # plot (same style as example)
+
+    def right_analytic_score(x, mus, sigmas, chosen_noise_levels, res=32):
         # center grid
         xlims = (min(x[:, 0]), max(x[:, 0]))
         ylims = (min(x[:, 1]), max(x[:, 1]))
@@ -300,6 +300,7 @@ def dsm(x, params):
         data = np.stack([X, Y], axis=-1)
         
         scores_with_noise = []
+        pdfs_with_noise = []
 
         #calculate all components of GMM for every noise level
         for l, noise_l in enumerate(chosen_noise_levels):
@@ -312,71 +313,39 @@ def dsm(x, params):
                 sig=torch2num(sig)
                 mu =torch2num(mu)
                 sig_noise = sig + np.eye(2) * noise_l**2
+                
+
                 for m in range(res):
                     for n in range(res):
                         point = data[m,n,:]
+                        denom = 0
+                        enum = 0
+                        for mu_k, sig_k in zip(mus, sigmas):
+                            sig_k_noise = sig_k + np.eye(2) * noise_l**2
+                            denom += multivar_Gauss_pdf(mu_k, sig_k_noise, point)
+                            enum += deriv_multivar_Gauss_pdf(mu_k, sig_k_noise, point)
+
+                        score = enum/denom
+
                         #probability of the point, given our GMM(for one component)
-                        amplitude = multivar_Gauss_pdf(mu, sig_noise, point)
-                        pdf_vals[m, n] += amplitude
+                       
+                        pdf_vals[m, n] += multivar_Gauss_pdf(mu, sig_noise, point)
                         #score(normalized to 1, so it only shows direction?) weighted with the pdf
-                        scores_all_components[m, n,:] += GMM_score(mu, sig_noise, point) * amplitude
+                        scores_all_components[m, n,:] += score
             
             scores_with_noise.append(scores_all_components)
+            pdfs_with_noise.append(pdf_vals)
 
             #plotting
             ax4[0, l].contourf(X, Y, pdf_vals, levels=100)
-            color_map = np.linalg.norm(scores_all_components,axis = 2)
-            ax4[1, l].quiver(X, Y, scores_all_components[:, :, 0], scores_all_components[:, :, 1], color_map)
+            colormap = np.hypot(scores_all_components[:, :, 0], scores_all_components[:, :, 1])
+            ax4[1, l].quiver(X, Y, scores_all_components[:, :, 0], scores_all_components[:, :, 1], colormap)
             
 
-        
-        '''
-                sig_k = sig_k + torch.eye(2) * noise_l**2
-                normal_part = Gaussian(data,mu_k,sig_k)
-                inner_deriv = ((mu_k-data)@np.linalg.inv(sig_k))
-                new_component = np.multiply(normal_part[:, np.newaxis], inner_deriv.numpy())
-
-                new_component = new_component.reshape((res,res))
-                denominator = denominator + new_component
-            
-                enumerator = np.random.normal(x,mu_k.numpy(),sig_k.numpy())*((mu_k-x)@np.linalg.inv(sig_k))
-               
-            score_all_components = enumerator/denominator
-            scores_with_noise.append(score_all_components)
- 
-        #getting colors of the arrows:
-        #TODO: take GMM results for this(with noise(same as already donee for 2))
-        for l,(score,noise_level) in enumerate(zip(scores_with_noise,sigma_list)):
-            x_sigma = x + noise_level * torch.randn(x.shape)
-
-            # plotting
-            ax4[0, i].contourf(X, Y, x_sigma, levels=100)
-            ax4[1, i].quiver(X, Y, score[l][:, :, 0], score[l][:, :, 1])#, np.hypot(scores[:, :, 0], scores[:, :, 1]))
-        '''
-        '''
-        for i, noiselevel in enumerate(chosen_sigmas):
-            #density = amplitude/color of the arrows
-            density = np.zeros((res, res))
-            scores = np.zeros((res, res, 2))
-            
-            for m, sig in zip(mu, sigma):
-                disturbed_sig = sig + torch.eye(2) * noiselevel**2
-                for j in range(res):
-                    for k in range(res):
-                    #     p = np.array([X[j, k], Y[j, k]])
-                    #     density_p = GMM(m, disturbed_sig, p)
-                    #     density[j, k] += density_p
-                        scores[j, k] += GMM_scores(m, disturbed_sig, p) * density_p
-
-            # plot 
-            ax_density = ax4[0, i]
-            ax_density.contourf(X, Y, density, levels=100)
-            ax_scores = ax4[1, i]
-            ax_scores.quiver(X, Y, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
-    
-        '''
+      
     chosen_sigmas = [sigma_list[0],sigma_list[int(len(sigma_list)/2)], sigma_list[-1]]
-    GMM_scores_plot_and_calculate(x, mu, sig, chosen_sigmas, 32)
+    #GMM_scores_plot_and_calculate(x, mu, sig, chosen_sigmas, 32)
+    right_analytic_score(x, mu, sig, chosen_sigmas, 32)
 
 
     #5. Compare energy based model with analytical counterpart (density and scores)
@@ -384,12 +353,11 @@ def dsm(x, params):
         xlims = (min(x[:, 0]), max(x[:, 0]))
         ylims = (min(x[:, 1]), max(x[:, 1]))
         X, Y = np.meshgrid(np.linspace(xlims[0],xlims[1], res), np.linspace(ylims[0],ylims[1], res))
-        data = np.stack([X, Y], axis=-1)
         x_tensor = torch.tensor(X.reshape(-1, 1), dtype=torch.float32)
         y_tensor = torch.tensor(Y.reshape(-1, 1), dtype=torch.float32)
 
         # save energy and scores
-        energy = np.zeros((res, res))
+        density = np.zeros((res, res))
         scores = np.zeros((res, res, 2))
 
         for l, noiselevel in enumerate(chosen_sigmas):
@@ -400,7 +368,7 @@ def dsm(x, params):
 
             # bw pass
             output = Simple_NN(input).reshape(res, res)
-            energy[:, :] = output.detach().numpy()
+            density[:, :] = np.exp(-output.detach().numpy())
             result = Simple_NN(input)
             result.backward(torch.ones_like(result))
 
@@ -411,7 +379,7 @@ def dsm(x, params):
             scores[:, :, 1] = y_scores.detach().numpy()
 
             # plotting
-            ax5[0, l].contourf(X, Y, energy, levels=100)
+            ax5[0, l].contourf(X, Y, density, levels=100)
             color_map = np.linalg.norm(scores,axis = 2)
             ax5[1, l].quiver(X, Y, scores[:, :, 0], scores[:, :, 1], color_map)
         
@@ -467,9 +435,10 @@ def sampling(Simple_NN, sigma_list, n_samples):
 
 
     for i in range(len(sigma_list)-1,-1,-1):
+        print(f"langevin iteration {i}")
         sigma_i = sigma_list[i].float()
         sigma_vals = torch.ones((x0.shape[0],1))*(sigma_i).float()#.view(-1, 1).clone().detach()
-        print(x0.shape[0])
+        #print(x0.shape[0])
         #sigma_vals = sigma_vals.reshape((x0.shape[0],1)).float()
 
         x = x0.clone()
@@ -487,9 +456,10 @@ def sampling(Simple_NN, sigma_list, n_samples):
             # scores[:, :, 0] = x_scores.detach().numpy()
             # scores[:, :, 1] = y_scores.detach().numpy()
 
-            output_NN = Simple_NN(x).detach()
+            output_NN = Simple_NN(x)#.detach()
+            output_NN.requires_grad_(True)
             grad_output_NN = torch.ones_like(output_NN)
-            score = torch.autograd.grad(output_NN,x,grad_outputs=grad_output_NN,create_graph=True)[0]
+            score = -torch.autograd.grad(output_NN,x,grad_outputs=grad_output_NN,create_graph=True)[0]
             #TODO: use the score of the simpleNN istead of the simple_NN itself
             x = x - (alpha / 2) * score + torch.sqrt(alpha) * z
 
@@ -517,12 +487,12 @@ if __name__ == '__main__':
     Simple_NN, sigma_list, figs = dsm(x=x, params=params)
 
     # sampling
-    #fig6 = sampling(Simple_NN=Simple_NN, sigma_list=sigma_list, n_samples=5000)
+    fig6 = sampling(Simple_NN=Simple_NN, sigma_list=sigma_list, n_samples=5000)
 
     pdf.savefig(fig1)
     for f in figs:
         pdf.savefig(f)
-    #pdf.savefig(fig6)
+    pdf.savefig(fig6)
 
     pdf.close()
     
