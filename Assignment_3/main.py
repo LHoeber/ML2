@@ -185,7 +185,7 @@ def dsm(x, params):
 
 
     #3. Training the neural network
-    num_iterations =500
+    num_iterations =200
     learning_rate = 0.01
     adam = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
     losses = []
@@ -228,8 +228,8 @@ def dsm(x, params):
         
         first_term = -(x_sigma - x)/sigma_vals**2
         grad_output_NN = torch.ones_like(output_NN)
-        second_term = torch.autograd.grad(output_NN,x_sigma,grad_outputs=grad_output_NN,create_graph=True)[0]
-        loss = torch.linalg.norm(first_term+second_term[:,:2])
+        second_term = -torch.autograd.grad(output_NN,x_sigma,grad_outputs=grad_output_NN,create_graph=True)[0]
+        loss = torch.linalg.norm(first_term-second_term[:,:2])
         
         # backwards pass and optimization
         adam.zero_grad()
@@ -266,6 +266,8 @@ def dsm(x, params):
         x = torch2num(x)
 
         sigma_inv = np.linalg.inv(sig)
+
+        
 
         return - np.dot(sigma_inv,(x - mu))
     
@@ -487,7 +489,7 @@ def sampling(Simple_NN, sigma_list, n_samples):
 
             output_NN = Simple_NN(x).detach()
             grad_output_NN = torch.ones_like(output_NN)
-            score = -torch.autograd.grad(output_NN,x,grad_outputs=grad_output_NN,create_graph=True)[0]
+            score = torch.autograd.grad(output_NN,x,grad_outputs=grad_output_NN,create_graph=True)[0]
             #TODO: use the score of the simpleNN istead of the simple_NN itself
             x = x - (alpha / 2) * score + torch.sqrt(alpha) * z
 
