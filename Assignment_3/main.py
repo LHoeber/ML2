@@ -189,7 +189,6 @@ def dsm(x, params):
     learning_rate = 0.01
     adam = optim.Adam(Simple_NN.parameters(), lr=learning_rate)
     losses = []
-
     
 
     for i in range(num_iterations):
@@ -201,25 +200,42 @@ def dsm(x, params):
         #do all the sampling points in each iteration need to get same noise level
         #or does the level need to get chosen for ever point separately?
         x_sigma = x + sigma_vals * torch.randn(x.shape)
+        x_sigma.requires_grad_(True)
         input_samples = torch.cat((x_sigma, sigma_vals), dim=1)
+        
+        #input_samples.requires_grad_(True)
+
+        '''sig_tensor = torch.full((x_tensor.size(0), 1), noiselevel, dtype=torch.float32)
+            input = torch.cat((x_tensor, y_tensor, sig_tensor), dim=1)
+            input.requires_grad_(True)
+
+            # bw pass
+            output = Simple_NN(input).reshape(res, res)
+            energy[:, :] = output.detach().numpy()
+            result = Simple_NN(input)
+            result.backward(torch.ones_like(result))
+
+            # scores
+            x_scores = input.grad[:, 0].reshape(res, res)
+            y_scores = input.grad[:, 1].reshape(res, res)
+            scores[:, :, 0] = x_scores.detach().numpy()
+            scores[:, :, 1] = y_scores.detach().numpy()'''
 
         # forwards pass
-        score_estimate = Simple_NN.forward(input_samples).squeeze()
-        #TODO: am i supposed to use autograd for this instead?
+        output_NN = Simple_NN.forward(input_samples)
+        #TODO: am i supposed to use autograd here
 
-        score_target = -(x_sigma - x).norm(dim=1)/sigma_vals.squeeze()**2
-        #score_target = - np.dot(np.linalg.inv(sig),(x - mu))
-
-        x_sigma.requires_grad_(True)  # Enable gradients for input data
-        #score_target = -torch.autograd.grad(outputs=score_estimate, inputs=x_sigma)[0]
-        #loss = F.binary_cross_entropy(torch.sigmoid(score_estimate), F.one_hot(score_target.long()).float()) # ((prediction - y_train)**2).mean()
-        # calculate loss
-        loss = nn.MSELoss()(score_estimate, score_target)
-
+        
+        first_term = -(x_sigma - x)/sigma_vals**2
+        grad_output_NN = torch.ones_like(output_NN)
+        second_term = torch.autograd.grad(output_NN,x_sigma,grad_outputs=grad_output_NN,create_graph=True)[0]
+        loss = torch.linalg.norm(first_term+second_term[:,:2])
+        
         # backwards pass and optimization
         adam.zero_grad()
         loss.backward()
         adam.step()
+        
 
         losses.append(loss.item())
         print(f"Training iteration: {i} of {num_iterations}")
@@ -361,47 +377,45 @@ def dsm(x, params):
     GMM_scores_plot_and_calculate(x, mu, sig, chosen_sigmas, 32)
 
 
-    # -----   Task 3.5 -----
-    # energy vs scores
-    def eval_energy(model, x, chosen_sigmas, res = 32):
-        x_min, x_max = x[:, 0].min(), x[:, 0].max()
-        y_min, y_max = x[:, 1].min(), x[:, 1].max()
-        X, Y = np.meshgrid(np.linspace(x_min, x_max, res), np.linspace(y_min, y_max, res))
+    #5. Compare energy based model with analytical counterpart (density and scores)
+    def compare_energy_score(Simple_NN, x, chosen_sigmas, res = 32):
+        xlims = (min(x[:, 0]), max(x[:, 0]))
+        ylims = (min(x[:, 1]), max(x[:, 1]))
+        X, Y = np.meshgrid(np.linspace(xlims[0],xlims[1], res), np.linspace(ylims[0],ylims[1], res))
+        data = np.stack([X, Y], axis=-1)
         x_tensor = torch.tensor(X.reshape(-1, 1), dtype=torch.float32)
         y_tensor = torch.tensor(Y.reshape(-1, 1), dtype=torch.float32)
 
-        # save energy and scors
+        # save energy and scores
         energy = np.zeros((res, res))
         scores = np.zeros((res, res, 2))
 
-        for n, noiselevel in enumerate(chosen_sigmas):
+        for l, noiselevel in enumerate(chosen_sigmas):
             # create noise tensor
             sig_tensor = torch.full((x_tensor.size(0), 1), noiselevel, dtype=torch.float32)
             input = torch.cat((x_tensor, y_tensor, sig_tensor), dim=1)
             input.requires_grad_(True)
 
             # bw pass
-            output = model(input).reshape(res, res)
+            output = Simple_NN(input).reshape(res, res)
             energy[:, :] = output.detach().numpy()
-            result = model(input)
+            result = Simple_NN(input)
             result.backward(torch.ones_like(result))
 
-            # score
+            # scores
             x_scores = input.grad[:, 0].reshape(res, res)
             y_scores = input.grad[:, 1].reshape(res, res)
             scores[:, :, 0] = x_scores.detach().numpy()
             scores[:, :, 1] = y_scores.detach().numpy()
 
-            # plot
-            ax5_energy = ax5[0, n]
-            ax5_scores = ax5[1, n]
-            ax5_energy.contourf(X, Y, energy, levels=100)
-            ax5_scores.quiver(X, Y, scores[:, :, 0], scores[:, :, 1], np.hypot(scores[:, :, 0], scores[:, :, 1]))
+            # plotting
+            ax5[0, l].contourf(X, Y, energy, levels=100)
+            color_map = np.linalg.norm(scores,axis = 2)
+            ax5[1, l].quiver(X, Y, scores[:, :, 0], scores[:, :, 1], color_map)
+        
 
-        return energy, scores
+    compare_energy_score(Simple_NN, x, chosen_sigmas,32)
 
-    energy, scores = eval_energy(Simple_NN, x, chosen_sigmas,32)
-    print("3.5) DONE: eval_energy (and plotted)")
     """ End of your code
     """
 
@@ -457,6 +471,7 @@ def sampling(Simple_NN, sigma_list, n_samples):
         #sigma_vals = sigma_vals.reshape((x0.shape[0],1)).float()
 
         x = x0.clone()
+        x.requires_grad_(True)
         x = torch.cat((x, sigma_vals), dim=1)
         
 
@@ -464,9 +479,18 @@ def sampling(Simple_NN, sigma_list, n_samples):
         alpha = eps*sigma**2/sigma_list[0].float()**2
         for t in range(T):
             z = torch.randn_like(x)
-            x.requires_grad_(True)
-            score = Simple_NN(x).detach()
+
+            # x_scores = input.grad[:, 0].reshape(res, res)
+            # y_scores = input.grad[:, 1].reshape(res, res)
+            # scores[:, :, 0] = x_scores.detach().numpy()
+            # scores[:, :, 1] = y_scores.detach().numpy()
+
+            output_NN = Simple_NN(x).detach()
+            grad_output_NN = torch.ones_like(output_NN)
+            score = -torch.autograd.grad(output_NN,x,grad_outputs=grad_output_NN,create_graph=True)[0]
+            #TODO: use the score of the simpleNN istead of the simple_NN itself
             x = x - (alpha / 2) * score + torch.sqrt(alpha) * z
+
     #plotting
     print("langevin complete")
     bins = 128
@@ -491,12 +515,12 @@ if __name__ == '__main__':
     Simple_NN, sigma_list, figs = dsm(x=x, params=params)
 
     # sampling
-    fig6 = sampling(Simple_NN=Simple_NN, sigma_list=sigma_list, n_samples=5000)
+    #fig6 = sampling(Simple_NN=Simple_NN, sigma_list=sigma_list, n_samples=5000)
 
     pdf.savefig(fig1)
     for f in figs:
         pdf.savefig(f)
-    pdf.savefig(fig6)
+    #pdf.savefig(fig6)
 
     pdf.close()
     
